@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+"""
+weread-to-obsidian — 把微信读书一本书的划线+想法整理成 Obsidian 笔记
+
+用法:
+  weread-to-obsidian <书名或bookId>        # 整理单本
+  weread-to-obsidian --list                # 列出所有有笔记的书
+  weread-to-obsidian --all                 # 批量导入所有有笔记的书
+  weread-to-obsidian <书名> --force        # 已存在时覆盖
+  weread-to-obsidian <书名> --dry-run      # 只显示会发生什么，不写文件
+
+环境变量:
+  WEREAD_API_KEY    必填，wrk-xxxxx 格式
+  WEREAD_VAULT      可选，Obsidian vault 路径
+                    (默认: ~/Library/Mobile Documents/iCloud~md~obsidian/Documents)
+  WEREAD_SUBDIR     可选，vault 下的子目录 (默认: 读书笔记)
+"""
+import argparse
+import json
+import os
+import re
+import sys
+import urllib.request
+import urllib.error
+from collections import defaultdict
+from datetime import datetime
+
+API = "https://i.weread.qq.com/api/agent/gateway"
+SKILL_VERSION = "1.0.3"
+
+DEFAULT_VAULT = os.path.expanduser(
+    "~/Library/Mobile Documents/iCloud~md~obsidian/Documents"
+)
+DEFAULT_SUBDIR = "读书笔记"
+
+
+def api(api_name, **params):
+    """Call the WeRead agent gateway. Returns parsed JSON."""
+    key = os.environ.get("WEREAD_API_KEY")
+    if not key:
+        sys.exit("ERROR: WEREAD_API_KEY 未设置 (export WEREAD_API_KEY=wrk-xxx)")
+    body = {"api_name": api_name, "skill_version": SKILL_VERSION, **params}
+    req = urllib.request.Request(
+        API,
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as e:
+        sys.exit(f"ERROR: 网络/接口失败: {e}")
+    if isinstance(data, dict) and data.get("errcode"):
+        sys.exit(f"ERROR: WeRead API {data.get('errcode')}: {data.get('errmsg')}")
+    return data
+
+
+def list_notebooks():
+    """Return all books that have notes, with full pagination."""
+    out = []
+    last_sort = None
+    while True:
+        params = {"count": 100}
+        if last_sort is not None:
+            params["lastSort"] = last_sort
+        d = api("/user/notebooks", **params)
+        batch = d.get("books") or []
+        out.extend(batch)
+        if d.get("hasMore") != 1 or not batch:
+            break
+        last_sort = batch[-1].get("sort")
+        if last_sort is None:
+            break
+    return out
+
+
+def find_book(query, notebooks):
+    """Resolve query (bookId or partial title) to (bookId, title, author)."""
+    # bookId 直接匹配
+    for nb in notebooks:
+        if nb.get("bookId") == query:
+            b = nb.get("book") or {}
+            return query, b.get("title", query), b.get("author", "")
+    # 书名包含匹配
+    candidates = [
+        nb for nb in notebooks
+        if query in ((nb.get("book") or {}).get("title") or "")
+    ]
+    if not candidates:
+        return None, None, None
+    if len(candidates) > 1:
+        print(f"找到多本匹配 '{query}':")
+        for i, nb in enumerate(candidates, 1):
+            b = nb.get("book") or {}
+            print(f"  {i}. {b.get('title')} — {b.get('author')} (bookId={nb.get('bookId')})")
+        sys.exit("请用更精确的书名或 bookId 重试")
+    nb = candidates[0]
+    b = nb.get("book") or {}
+    return nb.get("bookId"), b.get("title"), b.get("author")
+
+
+def fetch_book_notes(book_id):
+    """Fetch all bookmarks + reviews for a book. count=200 cap is enough."""
+    bm = api("/book/bookmarklist", bookId=book_id)
+    rv = api("/review/list/mine", bookid=book_id, count=200, synckey=0)
+    return bm, rv
+
+
+def range_start(s):
+    try:
+        return int((s or "0").split("-", 1)[0])
+    except Exception:
+        return 0
+
+
+def safe_filename(name):
+    """Strip characters Obsidian/macOS dislike in filenames."""
+    name = re.sub(r"[\\/:*?\"<>|\n\r\t]", " ", name)
+    return name.strip()[:120]
+
+
+def build_markdown(book_id, title, author, bm_data, rv_data):
+    bookmarks = bm_data.get("updated") or []
+    reviews = [r["review"] for r in (rv_data.get("reviews") or [])]
+    chapters = bm_data.get("chapters") or []
+    chap_title = {c["chapterIdx"]: c["title"] for c in chapters}
+
+    bm_by_chap = defaultdict(list)
+    for b in bookmarks:
+        bm_by_chap[b.get("chapterIdx", 0)].append(b)
+    rv_by_chap = defaultdict(list)
+    for r in reviews:
+        rv_by_chap[r.get("chapterIdx", 0)].append(r)
+    rv_ranges = defaultdict(set)
+    for r in reviews:
+        rv_ranges[r.get("chapterIdx", 0)].add(r.get("range"))
+
+    times = [b["createTime"] for b in bookmarks if b.get("createTime")]
+    start = datetime.fromtimestamp(min(times)).strftime("%Y-%m-%d") if times else ""
+    end = datetime.fromtimestamp(max(times)).strftime("%Y-%m-%d") if times else ""
+
+    lines = []
+    lines += [
+        "---",
+        f'title: "{title}"',
+        f'author: "[[{author}]]"',
+        f"bookId: {book_id}",
+        "source: 微信读书",
+        "type: 读书笔记",
+        f"started: {start}",
+        f"finished: {end}",
+        f"highlights: {len(bookmarks)}",
+        f"thoughts: {len(reviews)}",
+        "tags:",
+        "  - 读书笔记",
+        f"weread: weread://reading?bId={book_id}",
+        f"exported: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        "---",
+        "",
+        f"# 《{title}》",
+        "",
+        f"**作者**：[[{author}]]" if author else "",
+        f"**阅读跨度**：{start} → {end}" if start else "",
+        f"**笔记规模**：{len(bookmarks)} 条划线・{len(reviews)} 条想法",
+        f"**App 跳转**：[在微信读书中打开](weread://reading?bId={book_id})",
+        "",
+    ]
+
+    all_idx = sorted(set(list(bm_by_chap.keys()) + list(rv_by_chap.keys())))
+    if all_idx:
+        lines.append("> [!summary] 章节笔记密度")
+        lines.append("> ")
+        for idx in all_idx:
+            t = chap_title.get(idx, f"章节 {idx}")
+            lines.append(
+                f"> - [[#{t}|{t}]] — {len(bm_by_chap[idx])} 划线，"
+                f"**{len(rv_by_chap[idx])} 想法**"
+            )
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    for idx in all_idx:
+        t = chap_title.get(idx, f"章节 {idx}")
+        n_bm, n_rv = len(bm_by_chap[idx]), len(rv_by_chap[idx])
+        lines += [f"## {t}", f"_{n_bm} 划线 ・ {n_rv} 想法_", ""]
+
+        chap_reviews = sorted(rv_by_chap[idx], key=lambda r: range_start(r.get("range")))
+        if chap_reviews:
+            lines += ["### 💭 我的想法", ""]
+            for r in chap_reviews:
+                abstract = (r.get("abstract") or "").strip()
+                content = (r.get("content") or "").strip()
+                ts = r.get("createTime")
+                ts_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d") if ts else ""
+                chap_uid = r.get("chapterUid")
+                rng = r.get("range") or ""
+                jump = ""
+                if chap_uid and "-" in rng:
+                    rs, re_ = rng.split("-", 1)
+                    jump = (
+                        f"weread://bestbookmark?bookId={book_id}"
+                        f"&chapterUid={chap_uid}&rangeStart={rs}&rangeEnd={re_}"
+                    )
+                lines.append("> [!quote]")
+                for ln in abstract.split("\n"):
+                    lines.append(f"> {ln}")
+                lines.append("")
+                lines.append(f"**▸** {content}")
+                lines.append(
+                    f"<sub>{ts_str} · [跳转]({jump})</sub>" if jump else f"<sub>{ts_str}</sub>"
+                )
+                lines.append("")
+
+        pure = [b for b in bm_by_chap[idx] if b.get("range") not in rv_ranges[idx]]
+        pure.sort(key=lambda b: range_start(b.get("range")))
+        if pure:
+            lines += ["### ✍️ 划线", ""]
+            for b in pure:
+                text = (b.get("markText") or "").strip()
+                for ln in text.split("\n"):
+                    lines.append(f"> {ln}")
+                lines.append("")
+        lines += ["---", ""]
+
+    return "\n".join(lines)
+
+
+def main():
+    p = argparse.ArgumentParser(
+        description="WeRead → Obsidian 笔记导入工具",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    p.add_argument("query", nargs="?", help="书名（部分匹配）或 bookId")
+    p.add_argument("--list", action="store_true", help="列出所有有笔记的书")
+    p.add_argument("--all", action="store_true",
+                   help="批量导入已读完的书（进度 >= 90%%）")
+    p.add_argument("--include-reading", action="store_true",
+                   help="配合 --all 时，也导入在读的书")
+    p.add_argument("--force", action="store_true", help="文件已存在时覆盖")
+    p.add_argument("--dry-run", action="store_true", help="只显示会写哪些文件")
+    p.add_argument(
+        "--vault",
+        default=os.environ.get("WEREAD_VAULT", DEFAULT_VAULT),
+        help="Obsidian vault 路径",
+    )
+    p.add_argument(
+        "--subdir",
+        default=os.environ.get("WEREAD_SUBDIR", DEFAULT_SUBDIR),
+        help="vault 内子目录",
+    )
+    args = p.parse_args()
+
+    out_dir = os.path.join(args.vault, args.subdir)
+    if not args.dry_run:
+        os.makedirs(out_dir, exist_ok=True)
+
+    nbs = list_notebooks()
+
+    if args.list:
+        def total(b):
+            return b.get("reviewCount", 0) + b.get("noteCount", 0) + b.get("bookmarkCount", 0)
+        ordered = sorted(nbs, key=total, reverse=True)
+        print(f"共 {len(nbs)} 本有笔记（总 {sum(total(b) for b in nbs)} 条）：\n")
+        for i, b in enumerate(ordered, 1):
+            bk = b.get("book") or {}
+            print(f"  {i:>2}. {bk.get('title')} — {bk.get('author')}  "
+                  f"({total(b)} 条；bookId={b.get('bookId')})")
+        return
+
+    def is_finished(nb):
+        # 只看进度 —— markedStatus 经验上不准（用户经常误标或没改），
+        # progress >= 90 是更可信的"读完"信号
+        return nb.get("readingProgress", 0) >= 90
+
+    targets = []  # (bookId, title, author)
+    skipped_reading = []
+    if args.all:
+        for nb in nbs:
+            bk = nb.get("book") or {}
+            if not is_finished(nb) and not args.include_reading:
+                skipped_reading.append(bk.get("title"))
+                continue
+            targets.append((nb.get("bookId"), bk.get("title"), bk.get("author")))
+    elif args.query:
+        # 单本指名时总是导入，不管读没读完 —— 用户主动要看
+        bid, title, author = find_book(args.query, nbs)
+        if not bid:
+            sys.exit(f"未找到匹配 '{args.query}' 的书（请用 --list 查看清单）")
+        targets.append((bid, title, author))
+    else:
+        p.print_help()
+        sys.exit(1)
+
+    for bid, title, author in targets:
+        filename = safe_filename(title) + ".md"
+        path = os.path.join(out_dir, filename)
+        existing = os.path.exists(path)
+
+        if existing and not args.force:
+            print(f"⏭  跳过（已存在）: {filename} — 用 --force 覆盖")
+            continue
+        if args.dry_run:
+            tag = "覆盖" if existing else "新增"
+            print(f"[dry-run] {filename}  ({tag})")
+            continue
+
+        bm, rv = fetch_book_notes(bid)
+        md = build_markdown(bid, title, author or "", bm, rv)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(md)
+
+        n_bm = len(bm.get("updated") or [])
+        n_rv = len(rv.get("reviews") or [])
+        print(f"✅ {filename}  ({n_bm} 划线 + {n_rv} 想法)")
+
+    if skipped_reading:
+        print(f"\n📕 跳过 {len(skipped_reading)} 本在读的书（用 --include-reading 包含）")
+        for t in skipped_reading[:5]:
+            print(f"    · {t}")
+        if len(skipped_reading) > 5:
+            print(f"    ... 共 {len(skipped_reading)} 本")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+.idea/
+.vscode/
+*.swp
+
+# 个人测试数据（导出的真实笔记不进仓库）
+/output/
+/local-test/
