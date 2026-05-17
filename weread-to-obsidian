@@ -119,6 +119,74 @@ def fetch_best_bookmarks(book_id):
         return None
 
 
+def _is_quality_thought(pr):
+    """过滤策略：
+    - 至少 3 个赞（< 3 视为没被认同的个人感悟）
+    - 长文（>500 字）必须高赞（>=500 赞），否则视为 AI 灌水
+    """
+    likes = pr.get("likesCount") or 0
+    if likes < 3:
+        return False
+    content = ((pr.get("review") or {}).get("content") or "").strip()
+    if len(content) > 500 and likes < 500:
+        return False
+    return True
+
+
+def fetch_thoughts_for_bookmarks(book_id, best_data, per_range=3, fetch_count=20):
+    """对热门划线的每条 range 拉别人写的想法，按 likesCount 降序取 Top N。
+
+    返回 {(chapterUid, range): [pageReview, ...]}。失败时返回 {} 不阻塞主流程。
+
+    /book/readreviews 一次请求要求同一个 chapterUid，所以按章节分组批量调用。
+    pageReviews 默认不是按点赞数排序的，必须客户端重排。
+    fetch_count=20 是接口上限，拉满让候选更全。
+    """
+    items = (best_data or {}).get("items") or []
+    if not items:
+        return {}
+
+    by_chap = defaultdict(list)
+    for item in items:
+        chap_uid = item.get("chapterUid")
+        rng = item.get("range")
+        if chap_uid and rng:
+            by_chap[chap_uid].append(rng)
+
+    out = {}
+    for chap_uid, ranges in by_chap.items():
+        try:
+            data = api(
+                "/book/readreviews",
+                bookId=book_id,
+                chapterUid=chap_uid,
+                reviews=[{"range": r, "count": fetch_count} for r in ranges],
+            )
+        except SystemExit:
+            continue
+        for rg in data.get("reviews") or []:
+            page = rg.get("pageReviews") or []
+            quality = [p for p in page if _is_quality_thought(p)]
+            quality.sort(key=lambda p: p.get("likesCount", 0), reverse=True)
+            top = quality[:per_range]
+            if top:
+                out[(chap_uid, rg.get("range"))] = top
+    return out
+
+
+def _trim_thought(content):
+    """取第一段（双换行前）+ 250 字硬截，避免 AI 长文的 markdown 结构残留。"""
+    raw = (content or "").strip()
+    first = raw.split("\n\n", 1)[0]
+    truncated = False
+    if len(first) > 250:
+        first = first[:250].rstrip()
+        truncated = True
+    elif len(first) < len(raw):
+        truncated = True
+    return first + "…" if truncated else first
+
+
 def range_start(s):
     try:
         return int((s or "0").split("-", 1)[0])
@@ -132,7 +200,8 @@ def safe_filename(name):
     return name.strip()[:120]
 
 
-def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None):
+def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None,
+                   best_thoughts=None):
     bookmarks = bm_data.get("updated") or []
     reviews = [r["review"] for r in (rv_data.get("reviews") or [])]
     chapters = bm_data.get("chapters") or []
@@ -236,7 +305,8 @@ def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None):
                 lines.append("")
         lines += ["---", ""]
 
-    # 全书热门划线（来自 /book/bestbookmarks，全平台 Top 20，按划线人数排序）
+    # 全书热门划线 + 划线下的高赞想法
+    # 来自 /book/bestbookmarks（Top 20 热门划线）+ /book/readreviews（每条划线下的 Top 3 高赞想法）
     items = (best_data or {}).get("items") or []
     if items:
         best_chap_title = {
@@ -250,11 +320,13 @@ def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None):
             for b in bookmarks
             if b.get("chapterUid") and b.get("range")
         }
+        thoughts_map = best_thoughts or {}
 
         lines += [
-            "## 📚 全书热门划线",
+            "## 💡 热门划线 · 别人的想法",
             "",
-            f"<sub>来自微信读书全平台 · Top {len(items)} · 按划线人数排序</sub>",
+            f"<sub>来自微信读书全平台 · Top {len(items)} 划线 · "
+            "每条精选 Top 3 高赞想法（按点赞数排序）</sub>",
             "",
         ]
         for item in items:
@@ -282,6 +354,17 @@ def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None):
                 meta.append(f"[跳转]({jump})")
             lines.append(f"<sub>{' · '.join(meta)}</sub>")
             lines.append("")
+
+            # 这条划线下别人写的高赞想法
+            for pr in thoughts_map.get((chap_uid, rng), []):
+                rv = pr.get("review") or {}
+                name = (rv.get("author") or {}).get("name") or "匿名读者"
+                likes = pr.get("likesCount") or 0
+                content = _trim_thought(rv.get("content"))
+                lines.append(f"> > **▸ {name}** <sub>👍 {likes:,}</sub>")
+                for ln in content.split("\n"):
+                    lines.append(f"> > {ln}")
+                lines.append("")
 
     return "\n".join(lines)
 
@@ -368,14 +451,16 @@ def main():
 
         bm, rv = fetch_book_notes(bid)
         best = fetch_best_bookmarks(bid)
-        md = build_markdown(bid, title, author or "", bm, rv, best)
+        best_thoughts = fetch_thoughts_for_bookmarks(bid, best)
+        md = build_markdown(bid, title, author or "", bm, rv, best, best_thoughts)
         with open(path, "w", encoding="utf-8") as f:
             f.write(md)
 
         n_bm = len(bm.get("updated") or [])
         n_rv = len(rv.get("reviews") or [])
         n_best = len((best or {}).get("items") or [])
-        extra = f" + {n_best} 热门" if n_best else ""
+        n_thoughts = sum(len(v) for v in (best_thoughts or {}).values())
+        extra = f" + {n_best} 热门划线 + {n_thoughts} 高赞想法" if n_best else ""
         print(f"✅ {filename}  ({n_bm} 划线 + {n_rv} 想法{extra})")
 
     if skipped_reading:
