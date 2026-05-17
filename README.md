@@ -103,25 +103,37 @@ weread-to-obsidian --all --force
 
 刷新所有已读完书的最新划线和想法。`--force` 覆盖现有笔记内容（你在原文件里手动加的内容会丢，所以建议在 Obsidian 里只读这份，想自己写跨书思考另起新文件）。
 
-### 安装 Obsidian Dataview 插件
+### 用 Obsidian Bases 浏览（原生功能，无需插件）
 
-强烈推荐。装好后，在你的索引页（或任意页面）写：
+在 `读书笔记/` 目录下建一个 `读书笔记.base` 文件：
 
-````markdown
-```dataview
-TABLE WITHOUT ID
-  file.link AS "书名",
-  author AS "作者",
-  highlights AS "划线",
-  thoughts AS "想法",
-  finished AS "完成日"
-FROM "读书笔记"
-WHERE type = "读书笔记"
-SORT thoughts + highlights DESC
+```yaml
+filters:
+  and:
+    - 'type == "读书笔记"'
+    - file.inFolder("读书笔记")
+
+formulas:
+  total_notes: 'highlights + thoughts'
+
+properties:
+  highlights: { displayName: "划线" }
+  thoughts:   { displayName: "想法" }
+  finished:   { displayName: "完成日" }
+
+views:
+  - type: table
+    name: "全部已读完"
+    order: [file.name, author, highlights, thoughts, formula.total_notes, finished]
+  - type: table
+    name: "想法最多"
+    filters: { and: ['thoughts > 30'] }
+    order: [file.name, thoughts, highlights]
 ```
-````
 
-你的读书档案就有了一张自动同步的表格。新导入的书会自动出现，不需要手动维护。
+然后在任意 markdown 页面用 `![[读书笔记.base#全部已读完]]` 嵌入对应视图。新导入的书会自动出现，不需要手动维护。
+
+> Bases 是 Obsidian 1.9+ 原生功能。如果你的版本不支持，可以装 [Dataview](https://github.com/blacksmithgu/obsidian-dataview) 插件用类似查询达到同样效果。
 
 ## 工作机制
 
@@ -139,7 +151,7 @@ SORT thoughts + highlights DESC
 
 - 微信读书提供的 Agent API Gateway
 - [Obsidian](https://obsidian.md) — 知识管理工具
-- [Dataview](https://github.com/blacksmithgu/obsidian-dataview) — 让 markdown 笔记变成数据库
+- [Obsidian Bases](https://help.obsidian.md/bases) — 原生数据库视图（1.9+）
 
 ## License
 
