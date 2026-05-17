@@ -110,6 +110,15 @@ def fetch_book_notes(book_id):
     return bm, rv
 
 
+def fetch_best_bookmarks(book_id):
+    """Fetch global popular highlights (Top 20). Returns None on failure
+    so the main flow stays unaffected for cold books or transient errors."""
+    try:
+        return api("/book/bestbookmarks", bookId=book_id)
+    except SystemExit:
+        return None
+
+
 def range_start(s):
     try:
         return int((s or "0").split("-", 1)[0])
@@ -123,7 +132,7 @@ def safe_filename(name):
     return name.strip()[:120]
 
 
-def build_markdown(book_id, title, author, bm_data, rv_data):
+def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None):
     bookmarks = bm_data.get("updated") or []
     reviews = [r["review"] for r in (rv_data.get("reviews") or [])]
     chapters = bm_data.get("chapters") or []
@@ -227,6 +236,53 @@ def build_markdown(book_id, title, author, bm_data, rv_data):
                 lines.append("")
         lines += ["---", ""]
 
+    # 全书热门划线（来自 /book/bestbookmarks，全平台 Top 20，按划线人数排序）
+    items = (best_data or {}).get("items") or []
+    if items:
+        best_chap_title = {
+            c["chapterUid"]: c["title"]
+            for c in ((best_data or {}).get("chapters") or [])
+            if "chapterUid" in c and "title" in c
+        }
+        # 我的划线集合，用于标注"⭐ 我也划了"
+        my_marks = {
+            (b.get("chapterUid"), b.get("range"))
+            for b in bookmarks
+            if b.get("chapterUid") and b.get("range")
+        }
+
+        lines += [
+            "## 📚 全书热门划线",
+            "",
+            f"<sub>来自微信读书全平台 · Top {len(items)} · 按划线人数排序</sub>",
+            "",
+        ]
+        for item in items:
+            text = (item.get("markText") or "").strip()
+            count = item.get("totalCount", 0)
+            chap_uid = item.get("chapterUid")
+            rng = item.get("range") or ""
+            chap_t = best_chap_title.get(chap_uid, "")
+            also_mine = (chap_uid, rng) in my_marks
+
+            for ln in text.split("\n"):
+                lines.append(f"> {ln}")
+
+            meta = [f"🔥 **{count:,}** 人划线"]
+            if chap_t:
+                meta.append(f"📖 {chap_t}")
+            if also_mine:
+                meta.append("⭐ 我也划了")
+            if chap_uid and "-" in rng:
+                rs, re_ = rng.split("-", 1)
+                jump = (
+                    f"weread://bestbookmark?bookId={book_id}"
+                    f"&chapterUid={chap_uid}&rangeStart={rs}&rangeEnd={re_}"
+                )
+                meta.append(f"[跳转]({jump})")
+            lines.append(f"<sub>{' · '.join(meta)}</sub>")
+            lines.append("")
+
     return "\n".join(lines)
 
 
@@ -311,13 +367,16 @@ def main():
             continue
 
         bm, rv = fetch_book_notes(bid)
-        md = build_markdown(bid, title, author or "", bm, rv)
+        best = fetch_best_bookmarks(bid)
+        md = build_markdown(bid, title, author or "", bm, rv, best)
         with open(path, "w", encoding="utf-8") as f:
             f.write(md)
 
         n_bm = len(bm.get("updated") or [])
         n_rv = len(rv.get("reviews") or [])
-        print(f"✅ {filename}  ({n_bm} 划线 + {n_rv} 想法)")
+        n_best = len((best or {}).get("items") or [])
+        extra = f" + {n_best} 热门" if n_best else ""
+        print(f"✅ {filename}  ({n_bm} 划线 + {n_rv} 想法{extra})")
 
     if skipped_reading:
         print(f"\n📕 跳过 {len(skipped_reading)} 本在读的书（用 --include-reading 包含）")
