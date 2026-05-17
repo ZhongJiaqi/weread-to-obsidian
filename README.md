@@ -2,6 +2,22 @@
 
 > 把微信读书的划线和想法自动整理成 Obsidian 笔记。让你"翻阅过的痕迹"从 App 里解放出来，变成可整理、可重读、可二次加工的素材。
 
+## 工作流一览
+
+```mermaid
+flowchart LR
+    A["📱 微信读书<br/>划线 · 想法"]
+    B["⚙️ weread-to-obsidian<br/>Python CLI · stdlib only"]
+    C["📖 单本笔记<br/>按章节 · YAML frontmatter<br/>weread:// 深链回 App"]
+    D["🗂️ Obsidian Bases 视图<br/>表格 · 时间线 · 卡片墙"]
+
+    A -->|"Agent API Gateway"| B
+    B -->|"输出 Markdown"| C
+    C -.->|"frontmatter 字段"| D
+```
+
+一条命令把笔记从微信读书拉到本地 Obsidian vault，并通过 `.base` 视图聚合浏览。
+
 ## 它做什么
 
 一条命令，把你在微信读书的笔记（划线 + 想法/批注）按章节结构化输出成 Markdown，落到 Obsidian vault 里。
