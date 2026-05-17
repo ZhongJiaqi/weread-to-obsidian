@@ -174,17 +174,22 @@ def fetch_thoughts_for_bookmarks(book_id, best_data, per_range=3, fetch_count=20
     return out
 
 
-def _trim_thought(content):
-    """取第一段（双换行前）+ 250 字硬截，避免 AI 长文的 markdown 结构残留。"""
+def _trim_thought(content, limit=400):
+    """清理 markdown 控制字符 + 截到 limit 字。
+
+    保留正常分段内容（如"繁荣"那种 5000+ 赞的精华长想法），同时移除
+    会破坏嵌套引用渲染的元素：
+    - 独占一行的水平线 `---` → 删除（否则在 `> >` 嵌套引用里渲染成 hr）
+    - 行首 `## 标题` → 转 `**粗体**`（保留强调，不破坏标题层级）
+    - 三个以上连续空行 → 合并
+    """
     raw = (content or "").strip()
-    first = raw.split("\n\n", 1)[0]
-    truncated = False
-    if len(first) > 250:
-        first = first[:250].rstrip()
-        truncated = True
-    elif len(first) < len(raw):
-        truncated = True
-    return first + "…" if truncated else first
+    raw = re.sub(r"\n-{3,}(?=\n|$)", "", raw)
+    raw = re.sub(r"(?m)^#{1,6}\s+(.+)$", r"**\1**", raw)
+    raw = re.sub(r"\n{3,}", "\n\n", raw).strip()
+    if len(raw) > limit:
+        return raw[:limit].rstrip() + "…"
+    return raw
 
 
 def range_start(s):
@@ -248,15 +253,26 @@ def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None,
         "",
     ]
 
+    # 末尾"💡 热门划线"段的统计提前算，用于目录段
+    best_items = (best_data or {}).get("items") or []
+    best_thoughts_map = best_thoughts or {}
+    best_section_title = "💡 热门划线 · 别人的想法"
+
     all_idx = sorted(set(list(bm_by_chap.keys()) + list(rv_by_chap.keys())))
     if all_idx:
-        lines.append("> [!summary] 章节笔记密度")
+        lines.append("> [!summary] 📑 全文导航")
         lines.append("> ")
         for idx in all_idx:
             t = chap_title.get(idx, f"章节 {idx}")
             lines.append(
                 f"> - [[#{t}|{t}]] — {len(bm_by_chap[idx])} 划线，"
                 f"**{len(rv_by_chap[idx])} 想法**"
+            )
+        if best_items:
+            n_th = sum(len(v) for v in best_thoughts_map.values())
+            lines.append(
+                f"> - [[#{best_section_title}|{best_section_title}]] — "
+                f"Top {len(best_items)} 划线 + {n_th} 高赞想法"
             )
         lines.append("")
         lines.append("---")
@@ -307,7 +323,7 @@ def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None,
 
     # 全书热门划线 + 划线下的高赞想法
     # 来自 /book/bestbookmarks（Top 20 热门划线）+ /book/readreviews（每条划线下的 Top 3 高赞想法）
-    items = (best_data or {}).get("items") or []
+    items = best_items
     if items:
         best_chap_title = {
             c["chapterUid"]: c["title"]
@@ -320,10 +336,10 @@ def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None,
             for b in bookmarks
             if b.get("chapterUid") and b.get("range")
         }
-        thoughts_map = best_thoughts or {}
+        thoughts_map = best_thoughts_map
 
         lines += [
-            "## 💡 热门划线 · 别人的想法",
+            f"## {best_section_title}",
             "",
             f"<sub>来自微信读书全平台 · Top {len(items)} 划线 · "
             "每条精选 Top 3 高赞想法（按点赞数排序）</sub>",
