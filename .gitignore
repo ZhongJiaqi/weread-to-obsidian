@@ -9,3 +9,6 @@ __pycache__/
 # 个人测试数据（导出的真实笔记不进仓库）
 /output/
 /local-test/
+
+# 个人会话交接文档（本地恢复用，不公开）
+HANDOFF.md
