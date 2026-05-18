@@ -1,0 +1,52 @@
+{
+  "readStat": [
+    {"stat": "读过", "counts": "33本"},
+    {"stat": "读完", "counts": "8本"},
+    {"stat": "阅读", "counts": "251天"},
+    {"stat": "笔记", "counts": "6525条"}
+  ],
+  "readDays": 251,
+  "totalReadTime": 717244,
+  "registTime": 1520470365,
+  "readTimes": {
+    "1514736000": 0,
+    "1546272000": 0,
+    "1577808000": 0,
+    "1609430400": 29520,
+    "1640966400": 4320,
+    "1672502400": 7200,
+    "1704038400": 5400,
+    "1735660800": 189000,
+    "1767196800": 481680
+  },
+  "readLongest": [
+    {"book": {"title": "影响力（全新升级版）"}, "readTime": 163080, "tags": ["笔记最多"]},
+    {"book": {"title": "富爸爸穷爸爸"}, "readTime": 75240, "tags": ["单日阅读最久"]},
+    {"book": {"title": "纳瓦尔宝典"}, "readTime": 68760, "tags": []}
+  ],
+  "preferCategory": [
+    {"categoryTitle": "心理", "readingCount": 7, "readingTime": 261000},
+    {"categoryTitle": "个人成长", "readingCount": 15, "readingTime": 240120},
+    {"categoryTitle": "经济理财", "readingCount": 5, "readingTime": 153000},
+    {"categoryTitle": "生活百科", "readingCount": 2, "readingTime": 22320},
+    {"categoryTitle": "历史", "readingCount": 1, "readingTime": 720}
+  ],
+  "preferCategoryWord": "偏好阅读心理",
+  "preferTime": [10, 30, 70, 80, 100, 150, 140, 140, 90, 110, 120, 100, 50, 50, 80, 100, 90, 70, 10, 0, 0, 0, 0, 0],
+  "preferTimeWord": "偏好下午阅读",
+  "preferAuthor": [
+    {"name": "刘墉", "count": 2, "readTime": "16小时44分钟"},
+    {"name": "斯蒂芬·盖斯", "count": 2, "readTime": "16小时3分钟"},
+    {"name": "罗伯特·西奥迪尼", "count": 1, "readTime": "45小时18分钟"},
+    {"name": "罗伯特·清崎", "count": 1, "readTime": "20小时56分钟"},
+    {"name": "埃里克·乔根森", "count": 1, "readTime": "19小时6分钟"}
+  ],
+  "authorCount": 19,
+  "medals": [
+    {"displayText": "想法发布 1000 条"},
+    {"displayText": "21天阅读挑战"},
+    {"displayText": "地平线旅人"},
+    {"displayText": "连续阅读 90 天"},
+    {"displayText": "笔记达人"}
+  ]
+}

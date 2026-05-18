@@ -224,6 +224,64 @@ def ascii_bar(value, max_value, width=20, char="▮"):
     return char * n
 
 
+# 实用书类别白名单（用于"实用书阅读者"洞察的分子计算）
+PRACTICAL_CATEGORIES = {"心理", "个人成长", "经济理财", "管理"}
+
+
+def derive_insights(data):
+    """基于 readdata/detail 的字段推导出几条简单规则的洞察文案。
+
+    返回字符串列表，调用方可自行选择渲染位置。规则：
+    1. 读龄：注册到今年的差（年）
+    2. 爆发之年：今年时长 / 去年时长 > 1.5 →"今年是你的爆发之年（N×）"
+    3. 白天读书人：18-23 点时长 / 全天 < 10% → 文案
+    4. 实用书阅读者：实用类时长 / 总时长 > 80% → "实用书 ≈ X%"
+    """
+    insights = []
+    now = datetime.now()
+
+    # 1. 读龄
+    reg = data.get("registTime")
+    if reg:
+        reg_year = datetime.fromtimestamp(reg).year
+        years = now.year - reg_year
+        if years >= 1:
+            insights.append(f"{years} 年读龄（自 {reg_year} 年起）")
+
+    # 2. 爆发之年
+    rt = data.get("readTimes") or {}
+    if rt:
+        by_year = {datetime.fromtimestamp(int(ts)).year: secs for ts, secs in rt.items()}
+        this_y = by_year.get(now.year, 0)
+        last_y = by_year.get(now.year - 1, 0)
+        if last_y > 0 and this_y / last_y > 1.5:
+            insights.append(
+                f"今年是你的爆发之年（{this_y / last_y:.1f}× 去年）"
+            )
+
+    # 3. 白天读书人
+    pt = data.get("preferTime") or []
+    if len(pt) == 24:
+        night = sum(pt[18:24])
+        total = sum(pt)
+        if total > 0 and night / total < 0.10:
+            insights.append("白天读书人：18 点后几乎不读")
+
+    # 4. 实用书占比
+    cats = data.get("preferCategory") or []
+    if cats:
+        total_time = sum(c.get("readingTime", 0) for c in cats)
+        practical_time = sum(
+            c.get("readingTime", 0) for c in cats
+            if c.get("categoryTitle") in PRACTICAL_CATEGORIES
+        )
+        if total_time > 0 and practical_time / total_time > 0.80:
+            pct = round(practical_time / total_time * 100)
+            insights.append(f"实用书阅读者 ≈ {pct}%")
+
+    return insights
+
+
 def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None,
                    best_thoughts=None):
     bookmarks = bm_data.get("updated") or []
