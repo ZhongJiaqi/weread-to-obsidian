@@ -363,6 +363,100 @@ def build_quantity_callout(data):
     return "\n".join(lines)
 
 
+def _parse_chinese_duration(s):
+    """将 '16小时44分钟' / '45小时18分钟' 解析为分钟数，用于排序。失败返回 0。"""
+    if not isinstance(s, str):
+        return 0
+    h_match = re.search(r"(\d+)\s*小时", s)
+    m_match = re.search(r"(\d+)\s*分钟", s)
+    h = int(h_match.group(1)) if h_match else 0
+    m = int(m_match.group(1)) if m_match else 0
+    return h * 60 + m
+
+
+def build_taste_callout(data):
+    """构造 🎨 品味画像 callout。返回 markdown 多行字符串。"""
+    lines = ["> [!quote] 🎨 品味画像"]
+
+    # 类别偏好（按时长 Top 4）+ 实用书占比洞察
+    cats = sorted(
+        data.get("preferCategory") or [],
+        key=lambda c: c.get("readingTime", 0),
+        reverse=True,
+    )[:4]
+    if cats:
+        parts = [
+            f"{c.get('categoryTitle')} {round(c.get('readingTime', 0) / 3600, 1)}h"
+            for c in cats
+        ]
+        total_time = sum(c.get("readingTime", 0) for c in (data.get("preferCategory") or []))
+        practical_time = sum(
+            c.get("readingTime", 0) for c in (data.get("preferCategory") or [])
+            if c.get("categoryTitle") in PRACTICAL_CATEGORIES
+        )
+        pct_suffix = ""
+        if total_time > 0:
+            pct = round(practical_time / total_time * 100)
+            if pct >= 80:
+                pct_suffix = f"（实用书 ≈ {pct}%）"
+        lines.append(f"> - **类别偏好**（按时长）：{' · '.join(parts)}{pct_suffix}")
+
+    # 微信读书提炼一句话
+    word_bits = [data.get("preferCategoryWord", ""), data.get("preferTimeWord", "")]
+    word_bits = [w for w in word_bits if w]
+    if word_bits:
+        lines.append(f"> - **微信读书提炼**：{' · '.join(word_bits)}")
+
+    # 作者 Top 5（按 readTime 字符串解析后的分钟数排序）
+    authors = sorted(
+        data.get("preferAuthor") or [],
+        key=lambda a: _parse_chinese_duration(a.get("readTime", "")),
+        reverse=True,
+    )[:5]
+    if authors:
+        parts = [f"[[{a['name']}]] {a['readTime']}" for a in authors if a.get("name")]
+        author_count = data.get("authorCount", 0)
+        lines.append(
+            f"> - **最爱作者**（按时长 Top 5）：{' · '.join(parts)}"
+            f"（共读过 **{author_count} 位作者**）"
+        )
+
+    # 24h 时段分布（紧凑 4 列 × 6 行）
+    pt = data.get("preferTime") or []
+    if len(pt) == 24:
+        maxv = max(pt) if max(pt) > 0 else 1
+        peak_hour = pt.index(maxv)
+        lines.append("> - **阅读时段**（24h 分布）：")
+        lines.append("> ```")
+        for row in range(6):
+            row_cells = []
+            for col in range(4):
+                h = row + col * 6
+                if h >= 24:
+                    continue
+                bar = ascii_bar(pt[h], maxv, width=15)
+                mark = " ← 峰值" if h == peak_hour else ""
+                row_cells.append(f"{h:02d} {bar:<15}{mark}")
+            lines.append("> " + "    ".join(row_cells))
+        lines.append("> ```")
+
+        # 白天读书人洞察
+        night = sum(pt[18:24])
+        total = sum(pt)
+        if total > 0 and night / total < 0.10:
+            lines.append(">   **白天读书人**：04-17 为主，18 后几乎不读")
+
+    return "\n".join(lines)
+
+
+def build_profile_markdown(data):
+    """组装数量 + 品味两个 callout 为完整 markdown 段。"""
+    return "\n\n".join([
+        build_quantity_callout(data),
+        build_taste_callout(data),
+    ])
+
+
 def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None,
                    best_thoughts=None):
     bookmarks = bm_data.get("updated") or []
