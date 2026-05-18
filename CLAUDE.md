@@ -67,6 +67,27 @@ python3 -m py_compile weread-to-obsidian        # 语法检查（项目没有 li
 
 这个不对称是有意的：单本场景下用户表达了明确意图，全量场景下默认保持 vault 干净。
 
+### 8. 读者画像的保护区机制（`_读书档案.md` 顶部）
+
+`--profile` 子命令更新 `_读书档案.md` 顶部的画像区块。这个文件**同时被用户手写维护**（索引、快速操作、.base 嵌入），所以脚本只动 `<!-- WEREAD-PROFILE-START -->` 到 `<!-- WEREAD-PROFILE-END -->` 之间的内容。
+
+关键约束：
+- **标记本身必须保留**（替换的是中间内容，不是整段）
+- **只有 START 没有 END**（或反之）视为手动破坏，脚本拒绝执行
+- **没有任何标记** 时在 H1 之后自动插入完整保护区
+- **文件不存在** 时用 `_TEMPLATE` 新建（含 H1 + 保护区 + 占位手写区）
+- **bare 文件名**（无目录前缀）下 `os.makedirs("")` 会 FileNotFoundError，所以 `update_protected_section` 用 `if parent: os.makedirs(parent, ...)` 保护
+
+### 9. 画像数据源是 `/readdata/detail` mode=overall
+
+一次请求拿全量数据（注册时间、阅读统计、类别偏好、24h 时段、作者偏好、勋章）。
+关键字段：
+- `readStat`：[{stat: "读过", counts: "33本"}, ...] 阅读漏斗。`counts` 字段值可能是 `"33本"` 或 `"33 本"`，渲染时用 `re.sub(r"\s*(本|天)\s*$", r" \1", v)` 标准化
+- `readTimes`: {年的 Unix 时间戳 → 该年阅读秒数}，注意 key 是字符串。若 key 非纯数字应 `.isdigit()` 跳过
+- `preferTime`: 长度恰好为 24 的数组，每小时阅读时长。全 0 时整段不渲染（首次注册用户）
+- `preferAuthor[i].readTime`: 字符串如 "16小时44分钟"，需 `_parse_chinese_duration` 解析后排序（API 默认排序不是按时长）
+- `medals`: 勋章列表，每项 `displayText` 字段可读。若全空时不输出空括号
+
 ## 输出格式约定
 
 每章节的展示有两块结构：
