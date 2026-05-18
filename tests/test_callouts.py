@@ -61,7 +61,7 @@ class TestBuildQuantityCallout(unittest.TestCase):
 
     def test_non_numeric_readtime_key_ignored(self):
         # readTimes 含非数字 key 时跳过该项，不崩
-        bad = {"readTimes": {"1735660800": 100, "bad_key": 50}}
+        bad = {"readTimes": {"1751328000": 100, "bad_key": 50}}
         md = weread.build_quantity_callout(bad)
         self.assertIn("2025", md)
         self.assertNotIn("bad_key", md)
