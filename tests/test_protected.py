@@ -76,6 +76,30 @@ class TestUpdateProtectedSection(unittest.TestCase):
         # 文件未变
         self.assertEqual(self.path.read_text("utf-8"), original)
 
+    def test_only_end_marker_aborts(self):
+        """对称：只有 END 没有 START 也应抛 SystemExit"""
+        original = (
+            "# 📚 我的读书档案\n\n"
+            "孤立的 END 标记：\n"
+            "<!-- WEREAD-PROFILE-END -->\n\n"
+            "手写内容\n"
+        )
+        self.path.write_text(original, "utf-8")
+        with self.assertRaises(SystemExit):
+            weread.update_protected_section(str(self.path), "新画像内容")
+        self.assertEqual(self.path.read_text("utf-8"), original)
+
+    def test_bare_filename_no_directory_works(self):
+        """bare 文件名（无目录部分）也能新建"""
+        import os
+        cwd = os.getcwd()
+        os.chdir(self.tmpdir)
+        try:
+            weread.update_protected_section("_读书档案.md", "新画像内容")
+            self.assertTrue(os.path.exists("_读书档案.md"))
+        finally:
+            os.chdir(cwd)
+
     def test_dry_run_returns_full_text_without_writing(self):
         """dry_run=True 时返回最终文本但不写入磁盘"""
         self.assertFalse(self.path.exists())

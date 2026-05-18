@@ -492,7 +492,9 @@ def update_protected_section(path, content, dry_run=False):
     if not os.path.exists(path):
         new_text = _TEMPLATE.format(start=PROFILE_START, content=content, end=PROFILE_END)
         if not dry_run:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
+            parent = os.path.dirname(path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(new_text)
         return new_text
@@ -502,9 +504,9 @@ def update_protected_section(path, content, dry_run=False):
     has_start = "<!-- WEREAD-PROFILE-START" in text
     has_end = PROFILE_END in text
 
-    if has_start and not has_end:
+    if (has_start and not has_end) or (has_end and not has_start):
         sys.exit(
-            f"ERROR: {path} 含 START 标记但缺 END 标记，疑似手动破坏。"
+            f"ERROR: {path} 含不完整的保护区标记（START/END 必须成对出现）。"
             f"请先修复后再跑 --profile。"
         )
 
