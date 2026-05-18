@@ -284,6 +284,80 @@ def derive_insights(data):
     return insights
 
 
+def build_quantity_callout(data):
+    """构造 📊 数量画像 callout（Obsidian 兼容格式）。返回 markdown 多行字符串。"""
+    lines = ["> [!example] 📊 数量画像"]
+
+    # 阅读漏斗：从 readStat 取 读过/读完/阅读 三个
+    stat_map = {s.get("stat"): s.get("counts", "") for s in data.get("readStat") or []}
+    funnel_parts = []
+    for key in ("读过", "读完", "阅读"):
+        v = stat_map.get(key)
+        if v:
+            # "33本" → "33 本"；"251天" → "251 天"
+            display = v.replace("本", " 本").replace("天", " 天").strip()
+            funnel_parts.append(f"{key} **{display}**")
+    if funnel_parts:
+        lines.append(f"> - **阅读漏斗**：{' · '.join(funnel_parts)}")
+
+    # 累计投入：totalReadTime + 笔记数
+    total_h = format_hours(data.get("totalReadTime", 0))
+    notes_count = stat_map.get("笔记", "0条").replace("条", "").strip()
+    try:
+        notes_int = int(notes_count)
+        notes_display = f"{notes_int:,}"
+    except ValueError:
+        notes_display = notes_count
+    lines.append(f"> - **累计投入**：**{total_h}** · 笔记 **{notes_display} 条**")
+
+    # 入坑时间 + 读龄
+    reg = data.get("registTime")
+    if reg:
+        reg_date = datetime.fromtimestamp(reg).strftime("%Y-%m-%d")
+        years = datetime.now().year - datetime.fromtimestamp(reg).year
+        lines.append(f"> - **入坑时间**：{reg_date}（**{years} 年读龄**）")
+
+    # 年度趋势
+    rt = data.get("readTimes") or {}
+    if rt:
+        by_year_map = defaultdict(int)
+        for ts, secs in rt.items():
+            by_year_map[datetime.fromtimestamp(int(ts)).year] += secs
+        by_year = sorted(by_year_map.items())
+        max_secs = max(secs for _, secs in by_year) if by_year else 1
+        lines.append("> - **年度趋势**：")
+        lines.append("> ```")
+        cur_year = datetime.now().year
+        for yr, secs in by_year:
+            hrs = round(secs / 3600, 1)
+            bar = ascii_bar(secs, max_secs, width=20)
+            mark = " ← 进行中" if yr == cur_year else ""
+            lines.append(f"> {yr}  {bar:20}  {hrs}h{mark}")
+        lines.append("> ```")
+
+    # 单本时长 Top 3
+    longest = data.get("readLongest") or []
+    if longest:
+        parts = []
+        for b in longest[:3]:
+            title = (b.get("book") or {}).get("title") or ""
+            hrs = round(b.get("readTime", 0) / 3600, 1)
+            if title:
+                parts.append(f"[[{title}]] {hrs}h")
+        if parts:
+            lines.append(f"> - **单本时长 Top 3**：{' · '.join(parts)}")
+
+    # 勋章
+    medals = data.get("medals") or []
+    if medals:
+        top_names = [m.get("displayText") or m.get("hint") or "" for m in medals[:5]]
+        top_names = [n for n in top_names if n]
+        suffix = " / ..." if len(medals) > 5 else ""
+        lines.append(f"> - **🏅 勋章**：{len(medals)} 枚（{' / '.join(top_names)}{suffix}）")
+
+    return "\n".join(lines)
+
+
 def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None,
                    best_thoughts=None):
     bookmarks = bm_data.get("updated") or []
