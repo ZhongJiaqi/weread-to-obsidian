@@ -251,7 +251,9 @@ def derive_insights(data):
     # 2. 爆发之年
     rt = data.get("readTimes") or {}
     if rt:
-        by_year = {datetime.fromtimestamp(int(ts)).year: secs for ts, secs in rt.items()}
+        by_year = defaultdict(int)
+        for ts, secs in rt.items():
+            by_year[datetime.fromtimestamp(int(ts)).year] += secs
         this_y = by_year.get(now.year, 0)
         last_y = by_year.get(now.year - 1, 0)
         if last_y > 0 and this_y / last_y > 1.5:

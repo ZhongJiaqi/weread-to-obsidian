@@ -28,7 +28,7 @@ class TestDeriveInsights(unittest.TestCase):
         self.assertIn("爆发之年", joined)
 
     def test_day_reader(self):
-        # preferTime 18-23 总和 10, 全天 1500+，< 10%，触发"白天读书人"
+        # preferTime 18-23 总和 10，全天 1510（10/1510 ≈ 0.66% < 10%），触发"白天读书人"
         out = weread.derive_insights(FIXTURE)
         joined = " ".join(out)
         self.assertIn("白天读书人", joined)
