@@ -533,6 +533,26 @@ def update_protected_section(path, content, dry_run=False):
     return new_text
 
 
+def fetch_readdata_overall():
+    """调 /readdata/detail mode=overall。返回 dict。"""
+    return api("/readdata/detail", mode="overall")
+
+
+def main_profile(args, out_dir):
+    """--profile 子命令入口。out_dir 是 vault 内子目录路径。"""
+    profile_path = os.path.join(out_dir, "_读书档案.md")
+    data = fetch_readdata_overall()
+    profile_md = build_profile_markdown(data)
+
+    if args.dry_run:
+        final = update_protected_section(profile_path, profile_md, dry_run=True)
+        print(final)
+        return
+
+    update_protected_section(profile_path, profile_md)
+    print(f"✅ 画像已更新：{profile_path}")
+
+
 def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None,
                    best_thoughts=None):
     bookmarks = bm_data.get("updated") or []
@@ -723,6 +743,11 @@ def main():
     p.add_argument("--list", action="store_true", help="列出所有有笔记的书")
     p.add_argument("--all", action="store_true",
                    help="批量导入已读完的书（进度 >= 90%%）")
+    p.add_argument(
+        "--profile",
+        action="store_true",
+        help="更新 _读书档案.md 顶部的读者画像（数量 + 品味）",
+    )
     p.add_argument("--include-reading", action="store_true",
                    help="配合 --all 时，也导入在读的书")
     p.add_argument("--force", action="store_true", help="文件已存在时覆盖")
@@ -742,6 +767,12 @@ def main():
     out_dir = os.path.join(args.vault, args.subdir)
     if not args.dry_run:
         os.makedirs(out_dir, exist_ok=True)
+
+    if args.profile:
+        if not args.dry_run:
+            os.makedirs(out_dir, exist_ok=True)
+        main_profile(args, out_dir)
+        return
 
     nbs = list_notebooks()
 
