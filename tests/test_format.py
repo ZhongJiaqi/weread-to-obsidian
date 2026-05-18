@@ -21,6 +21,10 @@ class TestFormatHours(unittest.TestCase):
         # 199.2 小时
         self.assertEqual(weread.format_hours(717120), "199.2h")
 
+    def test_under_one_minute_floor(self):
+        # 15 秒不应该返回 "0 分钟"（矛盾）— 至少显示 1 分钟
+        self.assertEqual(weread.format_hours(15), "1 分钟")
+
 
 class TestAsciiBar(unittest.TestCase):
     def test_full(self):
@@ -39,6 +43,10 @@ class TestAsciiBar(unittest.TestCase):
 
     def test_custom_char(self):
         self.assertEqual(weread.ascii_bar(100, 100, width=5, char="="), "=====")
+
+    def test_overflow_clamped_to_width(self):
+        # value > max 时不应超过 width
+        self.assertEqual(weread.ascii_bar(150, 100, width=10), "▮" * 10)
 
 
 if __name__ == "__main__":

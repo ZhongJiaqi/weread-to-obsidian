@@ -212,7 +212,7 @@ def format_hours(seconds):
     if seconds <= 0:
         return "0h"
     if seconds < 3600:
-        return f"{int(round(seconds / 60))} 分钟"
+        return f"{max(1, int(round(seconds / 60)))} 分钟"
     return f"{round(seconds / 3600, 1)}h"
 
 
@@ -220,7 +220,7 @@ def ascii_bar(value, max_value, width=20, char="▮"):
     """画一行等宽 ascii bar。value=0 或 max_value<=0 时至少 1 格，避免空字符串。"""
     if max_value <= 0 or value <= 0:
         return char
-    n = max(1, int(round(value / max_value * width)))
+    n = min(width, max(1, int(round(value / max_value * width))))
     return char * n
 
 
