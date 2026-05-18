@@ -253,7 +253,8 @@ def derive_insights(data):
     if rt:
         by_year = defaultdict(int)
         for ts, secs in rt.items():
-            by_year[datetime.fromtimestamp(int(ts)).year] += secs
+            if str(ts).isdigit():
+                by_year[datetime.fromtimestamp(int(ts)).year] += secs
         this_y = by_year.get(now.year, 0)
         last_y = by_year.get(now.year - 1, 0)
         if last_y > 0 and this_y / last_y > 1.5:
@@ -295,7 +296,7 @@ def build_quantity_callout(data):
         v = stat_map.get(key)
         if v:
             # "33本" → "33 本"；"251天" → "251 天"
-            display = v.replace("本", " 本").replace("天", " 天").strip()
+            display = re.sub(r"\s*(本|天)\s*$", r" \1", v).strip()
             funnel_parts.append(f"{key} **{display}**")
     if funnel_parts:
         lines.append(f"> - **阅读漏斗**：{' · '.join(funnel_parts)}")
@@ -322,7 +323,8 @@ def build_quantity_callout(data):
     if rt:
         by_year_map = defaultdict(int)
         for ts, secs in rt.items():
-            by_year_map[datetime.fromtimestamp(int(ts)).year] += secs
+            if str(ts).isdigit():
+                by_year_map[datetime.fromtimestamp(int(ts)).year] += secs
         by_year = sorted(by_year_map.items())
         max_secs = max(secs for _, secs in by_year) if by_year else 1
         lines.append("> - **年度趋势**：")
@@ -353,7 +355,10 @@ def build_quantity_callout(data):
         top_names = [m.get("displayText") or m.get("hint") or "" for m in medals[:5]]
         top_names = [n for n in top_names if n]
         suffix = " / ..." if len(medals) > 5 else ""
-        lines.append(f"> - **🏅 勋章**：{len(medals)} 枚（{' / '.join(top_names)}{suffix}）")
+        if top_names:
+            lines.append(f"> - **🏅 勋章**：{len(medals)} 枚（{' / '.join(top_names)}{suffix}）")
+        else:
+            lines.append(f"> - **🏅 勋章**：{len(medals)} 枚")
 
     return "\n".join(lines)
 

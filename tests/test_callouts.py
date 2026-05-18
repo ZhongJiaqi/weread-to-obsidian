@@ -54,5 +54,26 @@ class TestBuildQuantityCallout(unittest.TestCase):
             )
 
 
+    def test_empty_data_does_not_crash(self):
+        # 空 data 不应抛错，至少返回 callout 头
+        md = weread.build_quantity_callout({})
+        self.assertTrue(md.startswith("> [!example] 📊 数量画像"))
+
+    def test_non_numeric_readtime_key_ignored(self):
+        # readTimes 含非数字 key 时跳过该项，不崩
+        bad = {"readTimes": {"1735660800": 100, "bad_key": 50}}
+        md = weread.build_quantity_callout(bad)
+        self.assertIn("2025", md)
+        self.assertNotIn("bad_key", md)
+
+    def test_medals_with_no_displaytext(self):
+        # medals 非空但所有 displayText 缺失，不应输出空括号
+        bad = {"medals": [{}, {}]}
+        md = weread.build_quantity_callout(bad)
+        self.assertIn("2 枚", md)
+        # 不应出现空括号 "（）"
+        self.assertNotIn("（）", md)
+
+
 if __name__ == "__main__":
     unittest.main()
