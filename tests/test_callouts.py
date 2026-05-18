@@ -104,7 +104,7 @@ class TestBuildTasteCallout(unittest.TestCase):
         self.assertIn("[[罗伯特·西奥迪尼]]", self.md)
 
     def test_contains_author_count(self):
-        self.assertIn("19", self.md)  # authorCount
+        self.assertIn("共读过 **19 位作者**", self.md)
 
     def test_contains_24h_distribution(self):
         # preferTime 24h，最大在 5 点（150）
@@ -120,6 +120,17 @@ class TestBuildTasteCallout(unittest.TestCase):
                 ln.startswith(">") or ln == "",
                 f"line does not start with `>`: {ln!r}",
             )
+
+    def test_empty_data_does_not_crash(self):
+        # 空 data 不应抛错，至少返回 callout 头
+        md = weread.build_taste_callout({})
+        self.assertTrue(md.startswith("> [!quote] 🎨 品味画像"))
+
+    def test_zero_prefer_time_skipped(self):
+        # preferTime 全 0 时整段不渲染，不应崩
+        md = weread.build_taste_callout({"preferTime": [0] * 24})
+        self.assertNotIn("阅读时段", md)
+        self.assertNotIn("峰值", md)
 
 
 class TestBuildProfileMarkdown(unittest.TestCase):

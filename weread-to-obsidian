@@ -423,8 +423,8 @@ def build_taste_callout(data):
 
     # 24h 时段分布（紧凑 4 列 × 6 行）
     pt = data.get("preferTime") or []
-    if len(pt) == 24:
-        maxv = max(pt) if max(pt) > 0 else 1
+    if len(pt) == 24 and max(pt) > 0:
+        maxv = max(pt)
         peak_hour = pt.index(maxv)
         lines.append("> - **阅读时段**（24h 分布）：")
         lines.append("> ```")
@@ -435,10 +435,10 @@ def build_taste_callout(data):
                 if h >= 24:
                     continue
                 bar = ascii_bar(pt[h], maxv, width=15)
-                mark = " ← 峰值" if h == peak_hour else ""
-                row_cells.append(f"{h:02d} {bar:<15}{mark}")
+                row_cells.append(f"{h:02d} {bar:<15}")
             lines.append("> " + "    ".join(row_cells))
         lines.append("> ```")
+        lines.append(f">   峰值时段：**{peak_hour:02d} 点**")
 
         # 白天读书人洞察
         night = sum(pt[18:24])
