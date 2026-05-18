@@ -457,6 +457,80 @@ def build_profile_markdown(data):
     ])
 
 
+PROFILE_START = "<!-- WEREAD-PROFILE-START · 自动生成 · 请勿手动修改 -->"
+PROFILE_END = "<!-- WEREAD-PROFILE-END -->"
+
+_TEMPLATE = """# 📚 我的读书档案
+
+{start}
+{content}
+{end}
+
+来源：微信读书 → Obsidian。由 `weread-to-obsidian` 自动同步。
+
+下面这块由你手写维护（脚本不会动）：
+
+## 全部已读完
+
+![[读书笔记.base#全部已读完]]
+"""
+
+
+def update_protected_section(path, content, dry_run=False):
+    """在文件里替换保护区内容（START/END 标记之间）。
+
+    场景：
+    1. 文件不存在 → 用 _TEMPLATE 新建
+    2. 文件存在但没标记 → 在 H1（第一行 # 开头）之后插入保护区
+    3. 文件存在且标记完整 → 替换标记之间的内容
+    4. 只有 START 没有 END → 抛 SystemExit 警告，不修改
+
+    dry_run=True 时返回最终字符串但不写文件。
+    """
+    block = f"{PROFILE_START}\n{content}\n{PROFILE_END}"
+
+    if not os.path.exists(path):
+        new_text = _TEMPLATE.format(start=PROFILE_START, content=content, end=PROFILE_END)
+        if not dry_run:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(new_text)
+        return new_text
+
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    has_start = "<!-- WEREAD-PROFILE-START" in text
+    has_end = PROFILE_END in text
+
+    if has_start and not has_end:
+        sys.exit(
+            f"ERROR: {path} 含 START 标记但缺 END 标记，疑似手动破坏。"
+            f"请先修复后再跑 --profile。"
+        )
+
+    if has_start and has_end:
+        # 替换标记之间内容（兼容旧版无 suffix 的 START 标记）
+        start_idx = text.find("<!-- WEREAD-PROFILE-START")
+        end_idx = text.find(PROFILE_END) + len(PROFILE_END)
+        new_text = text[:start_idx] + block + text[end_idx:]
+    else:
+        # 没标记 → 在 H1 之后插入
+        lines = text.split("\n")
+        h1_idx = next((i for i, ln in enumerate(lines) if ln.startswith("# ")), -1)
+        if h1_idx < 0:
+            # 没 H1 也没标记 → 顶部插入
+            new_text = block + "\n\n" + text
+        else:
+            insert_at = h1_idx + 1
+            new_lines = lines[:insert_at] + ["", block, ""] + lines[insert_at:]
+            new_text = "\n".join(new_lines)
+
+    if not dry_run:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new_text)
+    return new_text
+
+
 def build_markdown(book_id, title, author, bm_data, rv_data, best_data=None,
                    best_thoughts=None):
     bookmarks = bm_data.get("updated") or []
