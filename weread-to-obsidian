@@ -785,6 +785,33 @@ def fetch_readdata_overall():
     return api("/readdata/detail", mode="overall")
 
 
+def main_sync(args, out_dir):
+    """--sync 子命令入口：诊断 vault 与微信读书的 drift。
+
+    默认 dry-run（仅打印计划）。加 --apply 才真正执行 missing + stale 同步。
+    孤儿（vault 有但 API list 无）永远只警告，不动 vault。
+    """
+    vault = scan_vault(out_dir)
+    print(f"扫描 vault... {len(vault)} 本")
+
+    api_books = list_notebooks()
+    print(f"拉取微信读书 list... {len(api_books)} 本有笔记")
+
+    plan = diff_vault_vs_api(vault, api_books,
+                              include_reading=args.include_reading)
+
+    if args.apply:
+        print_sync_report(plan, applied=True, vault_count=len(vault))
+        if not (plan["missing"] or plan["stale"]):
+            return
+        os.makedirs(out_dir, exist_ok=True)
+        result = apply_sync_plan(plan, out_dir)
+        n_fail = len(result["failed"])
+        print(f"\n完成: {result['synced']} 本同步 / {n_fail} 失败")
+    else:
+        print_sync_report(plan, applied=False, vault_count=len(vault))
+
+
 def main_profile(args, out_dir):
     """--profile 子命令入口。out_dir 是 vault 内子目录路径。"""
     profile_path = os.path.join(out_dir, "_读书档案.md")
@@ -1000,6 +1027,16 @@ def main():
     p.add_argument("--force", action="store_true", help="文件已存在时覆盖")
     p.add_argument("--dry-run", action="store_true", help="只显示会写哪些文件")
     p.add_argument(
+        "--sync",
+        action="store_true",
+        help="对比 vault 与微信读书，输出 drift 报告（默认 dry-run，加 --apply 真正执行）",
+    )
+    p.add_argument(
+        "--apply",
+        action="store_true",
+        help="配合 --sync 时真正执行同步操作",
+    )
+    p.add_argument(
         "--vault",
         default=os.environ.get("WEREAD_VAULT", DEFAULT_VAULT),
         help="Obsidian vault 路径",
@@ -1017,6 +1054,13 @@ def main():
 
     if args.profile:
         main_profile(args, out_dir)
+        return
+
+    if args.apply and not args.sync:
+        sys.exit("--apply 必须配合 --sync 使用")
+
+    if args.sync:
+        main_sync(args, out_dir)
         return
 
     nbs = list_notebooks()
