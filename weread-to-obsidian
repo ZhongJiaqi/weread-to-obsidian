@@ -483,6 +483,46 @@ _TEMPLATE = """# 📚 我的读书档案
 """
 
 
+def parse_vault_frontmatter(path):
+    """读单个 .md 文件，提取 frontmatter 关键字段，返回 dict 或 None。
+
+    返回字段：{bookId, title, type, highlights, thoughts}
+
+    返回 None 的情况：
+    - 文件无 YAML frontmatter（开头不是 ---）
+    - frontmatter 中缺 bookId（无法用作唯一标识）
+
+    用正则手动解析，不引入 PyYAML，与项目 stdlib only 约束一致。
+    只解析单行 key: value 形式，不处理嵌套/多行（这里只取 5 个字段都是单行）。
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            txt = f.read()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+    m = re.match(r"^---\n(.*?)\n---\n", txt, re.S)
+    if not m:
+        return None
+
+    fm = {}
+    for line in m.group(1).splitlines():
+        mm = re.match(r"^(\w+):\s*(.*)$", line)
+        if mm:
+            fm[mm.group(1)] = mm.group(2).strip().strip('"').strip("'")
+
+    if "bookId" not in fm:
+        return None
+
+    return {
+        "bookId": fm.get("bookId", ""),
+        "title": fm.get("title", ""),
+        "type": fm.get("type", ""),
+        "highlights": int(fm.get("highlights", "0") or "0"),
+        "thoughts": int(fm.get("thoughts", "0") or "0"),
+    }
+
+
 def update_protected_section(path, content, dry_run=False):
     """在文件里替换保护区内容（START/END 标记之间）。
 
