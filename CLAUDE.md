@@ -88,6 +88,22 @@ python3 -m py_compile weread-to-obsidian        # 语法检查（项目没有 li
 - `preferAuthor[i].readTime`: 字符串如 "16小时44分钟"，需 `_parse_chinese_duration` 解析后排序（API 默认排序不是按时长）
 - `medals`: 勋章列表，每项 `displayText` 字段可读。若全空时不输出空括号
 
+### 10. drift 检测的字段映射约束（`--sync`）
+
+`--sync` 用 `/user/notebooks` 单次调用拿到所有书的 `noteCount` / `reviewCount` 对比 vault：
+
+- API `noteCount` ↔ vault frontmatter `highlights`（划线数）
+- API `reviewCount` ↔ vault frontmatter `thoughts`（想法数）
+- API `bookmarkCount` **不使用**（实测多本为 0，语义未明）
+
+这是 2026-06-16 实测 7 本对齐书得出的对应关系。如果未来微信读书改字段语义，drift 会乱报。
+
+**文件匹配用 frontmatter 的 `bookId`**，不用 `safe_filename(title)` 反推——书名带特殊字符或用户手动重命名时反推会失败。
+
+**孤儿（vault 在 + API 没有）只警告不动 vault**——保护用户可能手动整理/重命名/挪到子目录的笔记。`apply_sync_plan` 永远不处理孤儿类。
+
+stale 类用 vault 现有 path 覆写（保护用户重命名/移动），missing 类用 `safe_filename(title)` 新建。
+
 ## 输出格式约定
 
 每章节的展示有两块结构：

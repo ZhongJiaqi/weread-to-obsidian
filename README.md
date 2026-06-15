@@ -128,6 +128,24 @@ weread-to-obsidian --profile --dry-run
 
 **保护区机制**：脚本只更新 `_读书档案.md` 文件中 `<!-- WEREAD-PROFILE-START -->` 到 `<!-- WEREAD-PROFILE-END -->` 之间的内容，**不会破坏你手写的索引、快速操作、`.base` 嵌入等其他内容**。
 
+### 同步 vault 与微信读书（drift 检测）
+
+```bash
+# 看 drift 报告（默认 dry-run，只读不写）
+weread-to-obsidian --sync
+
+# 真正执行：拉缺的 + 刷过期的
+weread-to-obsidian --sync --apply
+```
+
+一次轻量 API 调用对比 vault 笔记与微信读书最新数据，输出三类清单：
+
+- 📥 **缺失**：已读完但 vault 没有的书 → `--apply` 自动拉取
+- 🔄 **过期**：vault 在但本地 highlights/thoughts ≠ 微信读书最新数（说明你又新增了划线/想法）→ `--apply` 自动重拉
+- 👻 **孤儿**：vault 在但微信读书 list 没有 → **只警告，不动 vault**（可能是 API key 切换或微信读书删书，需人工处理）
+
+跟 `--all --force` 的区别：`--all --force` 粗暴全刷所有读完书（即使本地数据没变）；`--sync --apply` 精准只动有变化的。日常推荐用 `--sync`，特殊情况（如脚本改了 markdown 结构）用 `--all --force`。
+
 ## 推荐工作流
 
 ### 每月例行同步
