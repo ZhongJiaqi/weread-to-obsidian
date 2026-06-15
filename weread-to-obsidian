@@ -59,6 +59,13 @@ def api(api_name, **params):
     return data
 
 
+def is_finished(nb):
+    """判断一本书是否读完。只看 readingProgress >= 90，
+    有意忽略 markedStatus —— 经验上 markedStatus 不准
+    （用户经常误标或没改），progress >= 90 是更可信的'读完'信号。"""
+    return nb.get("readingProgress", 0) >= 90
+
+
 def list_notebooks():
     """Return all books that have notes, with full pagination."""
     out = []
@@ -784,11 +791,6 @@ def main():
             print(f"  {i:>2}. {bk.get('title')} — {bk.get('author')}  "
                   f"({total(b)} 条；bookId={b.get('bookId')})")
         return
-
-    def is_finished(nb):
-        # 只看进度 —— markedStatus 经验上不准（用户经常误标或没改），
-        # progress >= 90 是更可信的"读完"信号
-        return nb.get("readingProgress", 0) >= 90
 
     targets = []  # (bookId, title, author)
     skipped_reading = []
