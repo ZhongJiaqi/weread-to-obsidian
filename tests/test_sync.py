@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from unittest import mock
 
 from tests import weread
 
@@ -254,6 +255,77 @@ class TestPrintSyncReport(unittest.TestCase):
             weread.print_sync_report(plan, applied=True, vault_count=7)
         out = buf.getvalue()
         self.assertNotIn("--apply", out)
+
+
+class TestApplySyncPlan(unittest.TestCase):
+    def test_single_failure_does_not_stop_others(self):
+        """单本 fetch 失败应记入 failed，其他书继续。"""
+        plan = {
+            "missing": [
+                {"bookId": "B_ok", "title": "成功的书",
+                 "author": "A1", "noteCount": 10, "reviewCount": 1},
+                {"bookId": "B_fail", "title": "失败的书",
+                 "author": "A2", "noteCount": 5, "reviewCount": 0},
+            ],
+            "stale": [],
+            "orphan": [],
+        }
+
+        def fake_fetch(book_id):
+            if book_id == "B_fail":
+                raise SystemExit("API error")
+            return ({"updated": [], "chapters": []}, {"reviews": []})
+
+        with tempfile.TemporaryDirectory() as out_dir:
+            with mock.patch.object(weread, "fetch_book_notes",
+                                   side_effect=fake_fetch), \
+                 mock.patch.object(weread, "fetch_best_bookmarks",
+                                   return_value=None), \
+                 mock.patch.object(weread, "fetch_thoughts_for_bookmarks",
+                                   return_value={}):
+                # Suppress per-book stdout in test
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    result = weread.apply_sync_plan(plan, out_dir)
+
+            self.assertEqual(result["synced"], 1)
+            self.assertEqual(len(result["failed"]), 1)
+            self.assertEqual(result["failed"][0]["bookId"], "B_fail")
+            # 成功的书应该有文件
+            self.assertTrue(any(
+                "成功的书" in fn for fn in os.listdir(out_dir)
+            ))
+
+    def test_stale_uses_existing_path(self):
+        """过期类应覆写到 vault 现有路径，不用 safe_filename 重新生成。"""
+        with tempfile.TemporaryDirectory() as out_dir:
+            existing_path = os.path.join(out_dir, "用户重命名过的文件.md")
+            with open(existing_path, "w", encoding="utf-8") as f:
+                f.write("old content")
+            plan = {
+                "missing": [],
+                "stale": [{"bookId": "B1", "title": "新书名",
+                           "author": "A1",
+                           "path": existing_path,
+                           "vault_highlights": 0, "vault_thoughts": 0,
+                           "api_noteCount": 1, "api_reviewCount": 0}],
+                "orphan": [],
+            }
+            with mock.patch.object(weread, "fetch_book_notes",
+                                   return_value=({"updated": [], "chapters": []},
+                                                 {"reviews": []})), \
+                 mock.patch.object(weread, "fetch_best_bookmarks",
+                                   return_value=None), \
+                 mock.patch.object(weread, "fetch_thoughts_for_bookmarks",
+                                   return_value={}):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    result = weread.apply_sync_plan(plan, out_dir)
+            self.assertEqual(result["synced"], 1)
+            # 文件应该还是同一个名字
+            self.assertTrue(os.path.exists(existing_path))
+            with open(existing_path, encoding="utf-8") as f:
+                self.assertNotEqual(f.read(), "old content")
 
 
 if __name__ == "__main__":

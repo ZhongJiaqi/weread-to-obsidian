@@ -667,6 +667,62 @@ def print_sync_report(plan, applied, vault_count):
         print("→ dry-run。加 --apply 真正执行。")
 
 
+def apply_sync_plan(plan, out_dir):
+    """执行同步计划：拉缺失 + 刷过期。孤儿不动。
+
+    Args:
+        plan: diff_vault_vs_api 返回值
+        out_dir: vault 子目录绝对路径
+
+    Returns:
+        {"synced": N, "failed": [{"bookId", "title", "reason"}, ...]}
+
+    单本 fetch 失败（SystemExit）会被 catch，记录到 failed 后继续其他书。
+    """
+    synced = 0
+    failed = []
+
+    def _write_book(bid, title, author, target_path):
+        try:
+            bm, rv = fetch_book_notes(bid)
+            best = fetch_best_bookmarks(bid)
+            best_thoughts = fetch_thoughts_for_bookmarks(bid, best)
+            md = build_markdown(bid, title, author or "", bm, rv,
+                                best, best_thoughts)
+            with open(target_path, "w", encoding="utf-8") as f:
+                f.write(md)
+            return True, None
+        except SystemExit as e:
+            return False, str(e)
+
+    for item in plan["missing"]:
+        bid = item["bookId"]
+        title = item["title"]
+        path = os.path.join(out_dir, safe_filename(title) + ".md")
+        ok, reason = _write_book(bid, title, item["author"], path)
+        if ok:
+            print(f"✓ 拉取: {title}")
+            synced += 1
+        else:
+            print(f"✗ 拉取失败: {title} — {reason}")
+            failed.append({"bookId": bid, "title": title, "reason": reason})
+
+    for item in plan["stale"]:
+        bid = item["bookId"]
+        title = item["title"]
+        # stale 时用 vault 现有路径覆写，保护用户重命名/移动
+        path = item["path"]
+        ok, reason = _write_book(bid, title, item.get("author", ""), path)
+        if ok:
+            print(f"✓ 重拉: {title}")
+            synced += 1
+        else:
+            print(f"✗ 重拉失败: {title} — {reason}")
+            failed.append({"bookId": bid, "title": title, "reason": reason})
+
+    return {"synced": synced, "failed": failed}
+
+
 def update_protected_section(path, content, dry_run=False):
     """在文件里替换保护区内容（START/END 标记之间）。
 
