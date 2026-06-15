@@ -523,6 +523,39 @@ def parse_vault_frontmatter(path):
     }
 
 
+def scan_vault(out_dir):
+    """遍历 out_dir 下所有 .md 文件，解析 frontmatter，
+    返回 {bookId: {path, title, highlights, thoughts}}。
+
+    跳过条件：
+    - 文件名以 _ 开头（_读书档案.md 等索引）
+    - frontmatter 解析返回 None（无 frontmatter 或缺 bookId）
+    - type != "读书笔记"（资料/索引等非笔记文件）
+
+    目录不存在返回 {}。
+    """
+    if not os.path.isdir(out_dir):
+        return {}
+
+    books = {}
+    for fn in os.listdir(out_dir):
+        if not fn.endswith(".md") or fn.startswith("_"):
+            continue
+        path = os.path.join(out_dir, fn)
+        rec = parse_vault_frontmatter(path)
+        if rec is None:
+            continue
+        if rec.get("type") != "读书笔记":
+            continue
+        books[rec["bookId"]] = {
+            "path": path,
+            "title": rec["title"],
+            "highlights": rec["highlights"],
+            "thoughts": rec["thoughts"],
+        }
+    return books
+
+
 def update_protected_section(path, content, dry_run=False):
     """在文件里替换保护区内容（START/END 标记之间）。
 
