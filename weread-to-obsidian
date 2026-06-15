@@ -556,6 +556,75 @@ def scan_vault(out_dir):
     return books
 
 
+def diff_vault_vs_api(vault, api_books, include_reading=False):
+    """对比 vault 与 API list，返回三类 drift 计划。
+
+    Args:
+        vault: scan_vault 返回值 {bookId: {path, title, highlights, thoughts}}
+        api_books: list_notebooks 返回值，每条含
+            {bookId, book: {title, author}, readingProgress, noteCount, reviewCount}
+        include_reading: True 时 missing 类不要求 progress >= 90
+
+    Returns:
+        {
+            "missing": [{bookId, title, author, noteCount, reviewCount}, ...],
+            "stale":   [{bookId, title, author, path, vault_highlights, vault_thoughts,
+                         api_noteCount, api_reviewCount}, ...],
+            "orphan":  [{bookId, title, path, highlights, thoughts}, ...],
+        }
+
+    字段映射约束（已实测对齐）：
+        API noteCount   ↔ vault highlights
+        API reviewCount ↔ vault thoughts
+    """
+    api_by_id = {nb.get("bookId"): nb for nb in api_books if nb.get("bookId")}
+
+    missing = []
+    stale = []
+    for bid, nb in api_by_id.items():
+        bk = nb.get("book") or {}
+        note_count = nb.get("noteCount", 0)
+        review_count = nb.get("reviewCount", 0)
+
+        if bid not in vault:
+            if include_reading or is_finished(nb):
+                missing.append({
+                    "bookId": bid,
+                    "title": bk.get("title", ""),
+                    "author": bk.get("author", ""),
+                    "noteCount": note_count,
+                    "reviewCount": review_count,
+                })
+            continue
+
+        v = vault[bid]
+        if (v["highlights"] != note_count
+                or v["thoughts"] != review_count):
+            stale.append({
+                "bookId": bid,
+                "title": bk.get("title", "") or v["title"],
+                "author": bk.get("author", ""),
+                "path": v["path"],
+                "vault_highlights": v["highlights"],
+                "vault_thoughts": v["thoughts"],
+                "api_noteCount": note_count,
+                "api_reviewCount": review_count,
+            })
+
+    orphan = []
+    for bid, v in vault.items():
+        if bid not in api_by_id:
+            orphan.append({
+                "bookId": bid,
+                "title": v["title"],
+                "path": v["path"],
+                "highlights": v["highlights"],
+                "thoughts": v["thoughts"],
+            })
+
+    return {"missing": missing, "stale": stale, "orphan": orphan}
+
+
 def update_protected_section(path, content, dry_run=False):
     """在文件里替换保护区内容（START/END 标记之间）。
 

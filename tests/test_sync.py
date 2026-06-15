@@ -75,5 +75,109 @@ class TestScanVault(unittest.TestCase):
         self.assertEqual(result, {})
 
 
+def _api_book(bid, title, author, progress, note_count, review_count):
+    """构造 list_notebooks 单条记录的 fixture。"""
+    return {
+        "bookId": bid,
+        "book": {"title": title, "author": author},
+        "readingProgress": progress,
+        "noteCount": note_count,
+        "reviewCount": review_count,
+    }
+
+
+class TestDiffVaultVsApi(unittest.TestCase):
+    def test_no_drift_when_perfectly_aligned(self):
+        vault = {
+            "B1": {"path": "/v/B1.md", "title": "T1",
+                   "highlights": 100, "thoughts": 10},
+        }
+        api = [_api_book("B1", "T1", "A1", 95, 100, 10)]
+        plan = weread.diff_vault_vs_api(vault, api, include_reading=False)
+        self.assertEqual(plan["missing"], [])
+        self.assertEqual(plan["stale"], [])
+        self.assertEqual(plan["orphan"], [])
+
+    def test_missing_when_finished_book_not_in_vault(self):
+        vault = {}
+        api = [_api_book("B2", "T2", "A2", 100, 50, 5)]
+        plan = weread.diff_vault_vs_api(vault, api, include_reading=False)
+        self.assertEqual(len(plan["missing"]), 1)
+        m = plan["missing"][0]
+        self.assertEqual(m["bookId"], "B2")
+        self.assertEqual(m["title"], "T2")
+        self.assertEqual(m["author"], "A2")
+        self.assertEqual(m["noteCount"], 50)
+        self.assertEqual(m["reviewCount"], 5)
+
+    def test_unfinished_excluded_when_not_include_reading(self):
+        vault = {}
+        api = [_api_book("B3", "T3", "A3", 50, 10, 1)]  # 进度 50
+        plan = weread.diff_vault_vs_api(vault, api, include_reading=False)
+        self.assertEqual(plan["missing"], [])
+
+    def test_unfinished_included_when_flag(self):
+        vault = {}
+        api = [_api_book("B3", "T3", "A3", 50, 10, 1)]
+        plan = weread.diff_vault_vs_api(vault, api, include_reading=True)
+        self.assertEqual(len(plan["missing"]), 1)
+
+    def test_stale_when_highlights_differ(self):
+        vault = {
+            "B4": {"path": "/v/B4.md", "title": "T4",
+                   "highlights": 100, "thoughts": 10},
+        }
+        api = [_api_book("B4", "T4", "A4", 100, 120, 10)]  # noteCount 100→120
+        plan = weread.diff_vault_vs_api(vault, api, include_reading=False)
+        self.assertEqual(len(plan["stale"]), 1)
+        s = plan["stale"][0]
+        self.assertEqual(s["bookId"], "B4")
+        self.assertEqual(s["author"], "A4")
+        self.assertEqual(s["vault_highlights"], 100)
+        self.assertEqual(s["vault_thoughts"], 10)
+        self.assertEqual(s["api_noteCount"], 120)
+        self.assertEqual(s["api_reviewCount"], 10)
+
+    def test_stale_when_thoughts_differ(self):
+        vault = {
+            "B5": {"path": "/v/B5.md", "title": "T5",
+                   "highlights": 100, "thoughts": 10},
+        }
+        api = [_api_book("B5", "T5", "A5", 100, 100, 15)]
+        plan = weread.diff_vault_vs_api(vault, api, include_reading=False)
+        self.assertEqual(len(plan["stale"]), 1)
+
+    def test_orphan_when_vault_has_book_api_missing(self):
+        vault = {
+            "B6": {"path": "/v/B6.md", "title": "T6",
+                   "highlights": 10, "thoughts": 1},
+        }
+        api = []
+        plan = weread.diff_vault_vs_api(vault, api, include_reading=False)
+        self.assertEqual(len(plan["orphan"]), 1)
+        o = plan["orphan"][0]
+        self.assertEqual(o["bookId"], "B6")
+        self.assertEqual(o["title"], "T6")
+
+    def test_combined_three_categories(self):
+        vault = {
+            "B_aligned": {"path": "/v/a.md", "title": "TA",
+                          "highlights": 50, "thoughts": 5},
+            "B_stale": {"path": "/v/s.md", "title": "TS",
+                        "highlights": 30, "thoughts": 3},
+            "B_orphan": {"path": "/v/o.md", "title": "TO",
+                         "highlights": 10, "thoughts": 1},
+        }
+        api = [
+            _api_book("B_aligned", "TA", "A", 100, 50, 5),
+            _api_book("B_stale", "TS", "A", 100, 40, 3),
+            _api_book("B_missing", "TM", "A", 100, 20, 2),
+        ]
+        plan = weread.diff_vault_vs_api(vault, api, include_reading=False)
+        self.assertEqual([m["bookId"] for m in plan["missing"]], ["B_missing"])
+        self.assertEqual([s["bookId"] for s in plan["stale"]], ["B_stale"])
+        self.assertEqual([o["bookId"] for o in plan["orphan"]], ["B_orphan"])
+
+
 if __name__ == "__main__":
     unittest.main()
