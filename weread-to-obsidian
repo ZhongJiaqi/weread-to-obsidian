@@ -625,6 +625,48 @@ def diff_vault_vs_api(vault, api_books, include_reading=False):
     return {"missing": missing, "stale": stale, "orphan": orphan}
 
 
+def print_sync_report(plan, applied, vault_count):
+    """渲染 drift 报告到 stdout。
+
+    Args:
+        plan: diff_vault_vs_api 返回值
+        applied: True 表示 --apply 模式（不打印 "加 --apply 真正执行" 提示）
+        vault_count: vault 已扫描到的书本数（用于无 drift 时的"7 本"提示）
+    """
+    m, s, o = plan["missing"], plan["stale"], plan["orphan"]
+
+    if not (m or s or o):
+        print(f"✅ vault 与微信读书已同步（{vault_count} 本）")
+        return
+
+    if m:
+        print(f"\n📥 缺失（{len(m)} 本）：")
+        for it in m:
+            print(f"  · {it['title']} — {it['author']}"
+                  f"（{it['noteCount']} 划 / {it['reviewCount']} 想）")
+
+    if s:
+        print(f"\n🔄 过期（{len(s)} 本）：")
+        for it in s:
+            print(f"  · {it['title']} — 本地 "
+                  f"{it['vault_highlights']}/{it['vault_thoughts']} → "
+                  f"微信读书 {it['api_noteCount']}/{it['api_reviewCount']}")
+
+    if o:
+        print(f"\n👻 孤儿（vault 在但微信读书 list 没有，{len(o)} 本）：")
+        for it in o:
+            print(f"  · {it['title']}（{it['highlights']} 划 / "
+                  f"{it['thoughts']} 想；{it['path']}）")
+        print("  → 不动 vault。可能是 API key 切换 / 微信读书删书，需人工处理。")
+
+    if not applied:
+        n_pull = len(m)
+        n_refresh = len(s)
+        est_sec = (n_pull + n_refresh) * 10
+        print(f"\n→ 计划：拉 {n_pull} 本 + 重拉 {n_refresh} 本（约 {est_sec} 秒）")
+        print("→ dry-run。加 --apply 真正执行。")
+
+
 def update_protected_section(path, content, dry_run=False):
     """在文件里替换保护区内容（START/END 标记之间）。
 

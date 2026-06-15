@@ -1,6 +1,8 @@
+import io
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 
 from tests import weread
 
@@ -177,6 +179,81 @@ class TestDiffVaultVsApi(unittest.TestCase):
         self.assertEqual([m["bookId"] for m in plan["missing"]], ["B_missing"])
         self.assertEqual([s["bookId"] for s in plan["stale"]], ["B_stale"])
         self.assertEqual([o["bookId"] for o in plan["orphan"]], ["B_orphan"])
+
+
+class TestPrintSyncReport(unittest.TestCase):
+    def test_no_drift_message(self):
+        plan = {"missing": [], "stale": [], "orphan": []}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            weread.print_sync_report(plan, applied=False, vault_count=7)
+        out = buf.getvalue()
+        self.assertIn("已同步", out)
+        self.assertIn("7", out)
+
+    def test_dry_run_lists_missing(self):
+        plan = {
+            "missing": [{"bookId": "B1", "title": "权力48法则",
+                         "author": "张小玲", "noteCount": 1615,
+                         "reviewCount": 308}],
+            "stale": [],
+            "orphan": [],
+        }
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            weread.print_sync_report(plan, applied=False, vault_count=7)
+        out = buf.getvalue()
+        self.assertIn("缺失", out)
+        self.assertIn("权力48法则", out)
+        self.assertIn("1615", out)
+        self.assertIn("308", out)
+        self.assertIn("--apply", out)
+
+    def test_dry_run_lists_stale_with_delta(self):
+        plan = {
+            "missing": [],
+            "stale": [{"bookId": "B2", "title": "纳瓦尔宝典",
+                       "author": "埃里克·乔根森",
+                       "path": "/v/纳瓦尔宝典.md",
+                       "vault_highlights": 594, "vault_thoughts": 159,
+                       "api_noteCount": 612, "api_reviewCount": 163}],
+            "orphan": [],
+        }
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            weread.print_sync_report(plan, applied=False, vault_count=7)
+        out = buf.getvalue()
+        self.assertIn("过期", out)
+        self.assertIn("纳瓦尔宝典", out)
+        self.assertIn("594", out)
+        self.assertIn("612", out)
+
+    def test_dry_run_lists_orphan(self):
+        plan = {
+            "missing": [],
+            "stale": [],
+            "orphan": [{"bookId": "B3", "title": "已删除的书",
+                        "path": "/v/x.md",
+                        "highlights": 10, "thoughts": 1}],
+        }
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            weread.print_sync_report(plan, applied=False, vault_count=7)
+        out = buf.getvalue()
+        self.assertIn("孤儿", out)
+        self.assertIn("已删除的书", out)
+
+    def test_apply_mode_no_apply_hint(self):
+        plan = {
+            "missing": [{"bookId": "B1", "title": "T",
+                         "author": "A", "noteCount": 1, "reviewCount": 1}],
+            "stale": [], "orphan": [],
+        }
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            weread.print_sync_report(plan, applied=True, vault_count=7)
+        out = buf.getvalue()
+        self.assertNotIn("--apply", out)
 
 
 if __name__ == "__main__":
