@@ -111,9 +111,15 @@ def find_book(query, notebooks):
 
 
 def fetch_book_notes(book_id):
-    """Fetch all bookmarks + reviews for a book. count=200 cap is enough."""
+    """Fetch all bookmarks + reviews for a book.
+
+    count=2000 留足余量：实测 /review/list/mine 不是真正的 pagination 接口
+    （synckey 是增量同步 cursor，不能补齐历史），但服务端接受比之前以为的 200
+    大得多的 count（实测 count=500 即可拿全 308 条，count=2000 远超任何单本
+    可能的想法数）。bookmarklist 不传 count 默认拿全（实测 1615 条 OK）。
+    """
     bm = api("/book/bookmarklist", bookId=book_id)
-    rv = api("/review/list/mine", bookid=book_id, count=200, synckey=0)
+    rv = api("/review/list/mine", bookid=book_id, count=2000, synckey=0)
     return bm, rv
 
 

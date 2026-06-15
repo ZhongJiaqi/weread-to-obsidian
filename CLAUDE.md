@@ -33,9 +33,15 @@ python3 -m py_compile weread-to-obsidian        # 语法检查（项目没有 li
 
 这是后端的历史不一致，**不是脚本 bug**。`fetch_book_notes()` 已经处理。新加调用时去对一下 `weread-skills` 的 `notes.md` 文档。
 
-### 3. `/review/list/mine` 用 count=200 一次拉全
+### 3. `/review/list/mine` 用 count=2000 一次拉全（**不是 pagination 接口**）
 
-接口默认 count=20，文档建议用 `synckey` 翻页。但实测 count=200 配 `synckey=0` 可以一次拉完单本所有想法（即使该书有 119+ 条）。脚本走这条捷径，不做分页循环。如果某本书 > 200 条想法（罕见），这里会漏数据——届时再改成 synckey 循环。
+接口默认 count=20，文档建议用 `synckey` 翻页。**但 synckey 是增量同步 cursor，不是 pagination cursor**：带 synckey 第二次请求只会返回"从那次之后新增的 reviews"，不会补齐 totalCount 里没拿到的历史数据（2026-06-16 用《权力48法则》308 条想法实测验证）。
+
+**正确做法**：直接把 count 设大。实测服务端没有 200 硬上限：count=500 拿全 308 条，count=1000 也 OK。脚本用 count=2000 留足余量。
+
+接口返回的 `totalCount` 是这本书 reviews 的真实总数，可以用来 sanity check（如果 `len(reviews) < totalCount`，说明 count 还是太小）。
+
+历史教训：CLAUDE.md 曾误以为 200 是接口的某种"实测最大值"且推测"届时改 synckey 循环"。两个都错——服务端 cap 远大于 200，且 synckey 不做翻页。
 
 ### 4. `is_finished()` 故意忽略 `markedStatus`
 
