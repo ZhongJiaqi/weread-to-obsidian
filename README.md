@@ -28,6 +28,7 @@ flowchart LR
 - **Obsidian 友好**：YAML frontmatter（Dataview 可查询）、作者双链、章节内目录跳转、`weread://` 深度链接（点了从 Obsidian 直接打开 App 对应划线位置）
 - **进度感知**：默认只导入"已读完"的书（进度 ≥ 90%）保持 vault 干净；在读的可以单本主动拉
 - **状态尊重**：vault 里已经手动整理过的文件位置/状态，同步时不会被推翻
+- **增量同步**：`--sync` 子命令对比 vault 与微信读书最新状态，输出三类 drift（缺失 / 过期 / 孤儿）；`--sync --apply` 精准只动有变化的书（区别于 `--all --force` 粗暴全刷）
 
 [查看输出格式示例 →](examples/示例笔记.md)
 
