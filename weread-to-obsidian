@@ -60,10 +60,16 @@ def api(api_name, **params):
 
 
 def is_finished(nb):
-    """判断一本书是否读完。只看 readingProgress >= 90，
-    有意忽略 markedStatus —— 经验上 markedStatus 不准
-    （用户经常误标或没改），progress >= 90 是更可信的'读完'信号。"""
-    return nb.get("readingProgress", 0) >= 90
+    """判断一本书是否读完：readingProgress >= 90，或 markedStatus == 4。
+
+    markedStatus 的取值经验上不是"0=在读/1=读完"这么简单——
+    2026-07-10 实测 26 本书数据发现 markedStatus == 4 才是微信读书
+    真正"读完"的信号（100% 对应 /book/getprogress 返回非空 finishTime），
+    其余 1/2/3 均不带 finishTime，即使某本书恰好 markedStatus == 1。
+    只看 progress 会漏判：某些书受版权页等结构影响，读完正文后
+    progress 冲不到 90（实测《影响力》finishTime 已记录但 progress 卡在 81%）。
+    """
+    return nb.get("readingProgress", 0) >= 90 or nb.get("markedStatus") == 4
 
 
 def list_notebooks():
@@ -1022,7 +1028,7 @@ def main():
     p.add_argument("query", nargs="?", help="书名（部分匹配）或 bookId")
     p.add_argument("--list", action="store_true", help="列出所有有笔记的书")
     p.add_argument("--all", action="store_true",
-                   help="批量导入已读完的书（进度 >= 90%%）")
+                   help="批量导入已读完的书（进度 >= 90%% 或微信读书标记读完）")
     p.add_argument(
         "--profile",
         action="store_true",

@@ -78,15 +78,19 @@ class TestScanVault(unittest.TestCase):
         self.assertEqual(result, {})
 
 
-def _api_book(bid, title, author, progress, note_count, review_count):
+def _api_book(bid, title, author, progress, note_count, review_count,
+              marked_status=None):
     """构造 list_notebooks 单条记录的 fixture。"""
-    return {
+    nb = {
         "bookId": bid,
         "book": {"title": title, "author": author},
         "readingProgress": progress,
         "noteCount": note_count,
         "reviewCount": review_count,
     }
+    if marked_status is not None:
+        nb["markedStatus"] = marked_status
+    return nb
 
 
 class TestDiffVaultVsApi(unittest.TestCase):
@@ -124,6 +128,15 @@ class TestDiffVaultVsApi(unittest.TestCase):
         api = [_api_book("B3", "T3", "A3", 50, 10, 1)]
         plan = weread.diff_vault_vs_api(vault, api, include_reading=True)
         self.assertEqual(len(plan["missing"]), 1)
+
+    def test_missing_includes_low_progress_book_marked_status_4(self):
+        # 复现《影响力》场景：progress 81（版权页拖累，冲不到 90），
+        # 但 markedStatus == 4（微信读书真正记录读完）——应被判定为缺失。
+        vault = {}
+        api = [_api_book("B6", "T6", "A6", 81, 1343, 240, marked_status=4)]
+        plan = weread.diff_vault_vs_api(vault, api, include_reading=False)
+        self.assertEqual(len(plan["missing"]), 1)
+        self.assertEqual(plan["missing"][0]["bookId"], "B6")
 
     def test_stale_when_highlights_differ(self):
         vault = {

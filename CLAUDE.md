@@ -43,9 +43,13 @@ python3 -m py_compile weread-to-obsidian        # 语法检查（项目没有 li
 
 历史教训：CLAUDE.md 曾误以为 200 是接口的某种"实测最大值"且推测"届时改 synckey 循环"。两个都错——服务端 cap 远大于 200，且 synckey 不做翻页。
 
-### 4. `is_finished()` 故意忽略 `markedStatus`
+### 4. `is_finished()`：`readingProgress >= 90` 或 `markedStatus == 4`
 
-判断"读完"只看 `readingProgress >= 90`，**有意不参考 `markedStatus=1`**。`markedStatus` 经验上不准——用户会误点"标记读完"或忘改进度，例如某本书 `markedStatus=1` 但进度 0%。改这条规则前请记住这个背景。
+判断"读完"用 `readingProgress >= 90 OR markedStatus == 4`。
+
+`markedStatus` 不是文档里写的"0=在读/1=读完"那么简单，历史上确实踩过坑——某本书 `markedStatus=1` 但进度 0%，说明 `1` 不可信。**但 2026-07-10 实测 26 本书的 `/book/getprogress` 发现 `markedStatus == 4` 是可靠信号**：这个账号里 10 本 `markedStatus == 4` 的书 100% 都带有非空 `finishTime`，其余 markedStatus（1/2/3）都不带。加 `markedStatus == 4` 这条是为了修复一个真实漏判——《影响力》读完了（微信读书记了 `finishTime`），但因为书末版权声明页多数人不会点进去，`readingProgress` 卡在 81%，只看 progress 会把它误判成"在读"。
+
+**改这条规则前**：markedStatus 的具体取值含义没有官方文档，是基于这一次实测归纳的经验规律，不代表对所有账号/所有取值都成立；如果以后又出现误判，先重新做一次 `/book/getprogress` 全量 probe 比对，不要凭直觉调整阈值。
 
 ### 5. 文件已存在时"尊重当前位置"
 

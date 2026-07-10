@@ -23,6 +23,13 @@ class TestIsFinished(unittest.TestCase):
             weread.is_finished({"readingProgress": 42, "markedStatus": 1})
         )
 
+    def test_markedStatus_4_finished_even_if_progress_below_90(self):
+        # markedStatus=4 是微信读书真正"读完"的信号（附带 finishTime）。
+        # 有些书受版权页等结构影响 progress 冲不到 90（实测《影响力》81%）。
+        self.assertTrue(
+            weread.is_finished({"readingProgress": 81, "markedStatus": 4})
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
