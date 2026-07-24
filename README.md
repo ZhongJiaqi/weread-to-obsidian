@@ -1,235 +1,68 @@
-# weread-to-obsidian
+# weread-to-obsidian — 微信读书笔记，一条命令搬进 Obsidian
 
-> 把微信读书的划线和想法自动整理成 Obsidian 笔记。让你"翻阅过的痕迹"从 App 里解放出来，变成可整理、可重读、可二次加工的素材。
+> 给同时重度使用微信读书和 Obsidian 的读书人的笔记同步 CLI，解决划线和想法困在 App 里、无法被本地知识库检索引用的问题。
 
-## 工作流一览
+## 为什么做这个
 
-```mermaid
-flowchart LR
-    A["📱 微信读书<br/>划线 · 想法"]
-    B["⚙️ weread-to-obsidian<br/>Python CLI · stdlib only"]
-    C["📖 单本笔记<br/>按章节 · YAML frontmatter<br/>weread:// 深链回 App"]
-    D["🗂️ Obsidian Bases 视图<br/>表格 · 时间线 · 卡片墙"]
+在微信读书里读了 33 本书、攒下 6500+ 条划线和想法之后，问题越来越明显：写东西想引用某段话，只记得"在某本书里见过"，得打开 App 一本本翻；Obsidian 里的知识库再完整，也检索不到这批数据。主流导出方案大多走网页版 cookie 抓取——cookie 几天就过期，同步链路说断就断；手动复制粘贴则完全撑不起几十本书的量。所以做了这个：走微信读书官方 Agent API（API key 认证，不碰 cookie）的单文件 Python CLI，一条命令把一本书的全部划线、想法按章节结构落成 Obsidian 可直接检索的 Markdown。
 
-    A -->|"Agent API Gateway"| B
-    B -->|"输出 Markdown"| C
-    C -.->|"frontmatter 字段"| D
-```
+## 核心功能
 
-一条命令把笔记从微信读书拉到本地 Obsidian vault，并通过 `.base` 视图聚合浏览。
+- ✅ 一条命令导入整本书 —— `weread-to-obsidian 书名`，划线/想法按章节归位，带 frontmatter 的 Markdown 直接进 vault，立刻可检索、可双链引用
+- ✅ `--sync` 增量对账 —— vault 与微信读书两边 diff（缺失 / 过期 / 孤儿三类），只刷新有变化的书，手动整理过的笔记位置不会被推翻
+- ✅ 热门划线 + 高赞书友想法 —— 每本书附平台 Top-20 热门划线、每条最多 3 条高赞想法（按点赞过滤灌水），重读时能看到"大家在划什么"，和自己重合的标 ⭐
+- ✅ `weread://` 深链 —— 笔记里每条划线一键跳回 App 内原文位置，Obsidian 与微信读书双向打通
+- ✅ `--profile` 读者画像 —— 年度阅读趋势、24 小时阅读时段分布、偏好作者，写入受保护区块，重复运行不覆盖手写内容
 
-## 它做什么
+## 效果展示
 
-一条命令，把你在微信读书的笔记（划线 + 想法/批注）按章节结构化输出成 Markdown，落到 Obsidian vault 里。
+<!-- TODO(素材): ① examples/示例笔记.md 在 Obsidian 中的渲染截图（frontmatter + 章节划线/想法 + 热门划线区）
+     ② `--sync` drift 报告终端截图（📥缺失 / 🔄过期 / 👻孤儿 三段）
+     ③ Obsidian Bases 表格视图截图（可选） -->
 
-- **按章节分组**：每章的"💭 我的想法" 和 "✍️ 划线" 清晰分块，想法保留对应的划线原文上下文
-- **热门划线 + 别人的想法**：每本笔记末尾自动附上全平台 Top 20 热门划线，**每条划线下精选 Top 3 高赞想法**（按点赞数排序，过滤 AI 灌水）。和自己重合的划线会标 ⭐ "我也划了"
-- **读者画像**：`--profile` 子命令在 `_读书档案.md` 顶部生成"数量画像 + 品味画像"双 callout（年度阅读趋势、24h 时段分布、最爱作者/类别、自动洞察）
-- **Obsidian 友好**：YAML frontmatter（Dataview 可查询）、作者双链、章节内目录跳转、`weread://` 深度链接（点了从 Obsidian 直接打开 App 对应划线位置）
-- **进度感知**：默认只导入"已读完"的书（进度 ≥ 90% 或微信读书标记读完）保持 vault 干净；在读的可以单本主动拉
-- **状态尊重**：vault 里已经手动整理过的文件位置/状态，同步时不会被推翻
-- **增量同步**：`--sync` 子命令对比 vault 与微信读书最新状态，输出三类 drift（缺失 / 过期 / 孤儿）；`--sync --apply` 精准只动有变化的书（区别于 `--all --force` 粗暴全刷）
+生成的笔记结构可先看 [examples/示例笔记.md](examples/示例笔记.md)。
 
-[查看输出格式示例 →](examples/示例笔记.md)
-
-## 📚 我的书单
-
-用这个工具目前已经沉淀了 **11 本已读完**的书籍笔记，这是其中几本：
-
-**已读完**
-
-| 书名 | 作者 | 划线 | 想法 |
-|---|---|---|---|
-| 思考，快与慢（第二版） | [美]丹尼尔·卡尼曼 | 1028 | 421 |
-| 影响力（全新升级版） | 罗伯特·西奥迪尼 | 1343 | 240 |
-| 认知觉醒：开启自我改变的原动力 | 周岭 | 328 | 14 |
-| 非暴力沟通（修订版） | 马歇尔·卢森堡 | 509 | 120 |
-| 如何成为不完美主义者 | 斯蒂芬·盖斯 | 679 | 122 |
-| 富爸爸穷爸爸 | 罗伯特·清崎 | 488 | 91 |
-| 纳瓦尔宝典 | 埃里克·乔根森 | 594 | 160 |
-| 精英的人格魅力课 | 奥利维娅·福克斯·卡巴恩 | 912 | 200 |
-
-**在读**
-
-| 书名 | 作者 | 划线 | 想法 |
-|---|---|---|---|
-| 穷查理宝典：查理·芒格智慧箴言录（全新增订本） | 彼得·考夫曼 | 114 | 33 |
-| 哈佛经典谈判术：你一开口就赢麻了 | [美]迪帕克·马尔霍特拉 [美]马克斯·巴泽曼 | 86 | 40 |
-
-## 依赖
-
-- Python 3 （macOS/Linux 自带；用了 stdlib，没有外部依赖）
-- 一个 [Obsidian](https://obsidian.md/) vault（任意位置）
-- **微信读书 Agent API Key**（`wrk-xxxxx` 格式）—— 这是核心依赖
-
-### 关于 API Key
-
-本工具通过微信读书官方提供的 Agent API Gateway 调用接口。你需要一份 `wrk-xxxxxxxx` 格式的 API key。
-
-获取方式：参考 [微信读书 weread-skills](https://cdn.weread.qq.com/skills/weread-skills.zip) 中的 SKILL.md 说明。如果你已经在 Claude Code / Cursor 等环境里安装并使用过 `weread-skills`，那你应该已经有这把 key 了，直接复用即可。
-
-## 安装
+## 快速开始
 
 ```bash
 git clone https://github.com/ZhongJiaqi/weread-to-obsidian.git
-cd weread-to-obsidian
-./install.sh
+cd weread-to-obsidian && ./install.sh                 # 装到 ~/.local/bin
+WEREAD_API_KEY=wrk-你的key weread-to-obsidian --list  # 列出所有有笔记的书
 ```
 
-`install.sh` 把 `weread-to-obsidian` 拷贝到 `~/.local/bin/`。确保该目录在 `PATH` 中（脚本会检查并提示）。
+| 环境变量 | 必需 | 用途 |
+|---|---|---|
+| `WEREAD_API_KEY` | 是 | 微信读书 Agent API 的 Bearer token（`wrk-` 开头）。获取方式见 [weread-skills](https://cdn.weread.qq.com/skills/weread-skills.zip) 的 SKILL.md；已在 Claude Code / Cursor 用过 weread-skills 的直接复用。建议写进 `~/.zshenv` 让非交互 shell 也能读到 |
+| `WEREAD_VAULT` | 否 | vault 路径，默认 macOS iCloud 的 Obsidian 目录 |
+| `WEREAD_SUBDIR` | 否 | vault 内子目录，默认 `读书笔记` |
 
-## 配置
-
-### 1. 设置 API Key
-
-把 key 放进环境变量。**重要**：写到 `~/.zshenv`（而不是 `~/.zshrc`），这样非交互 shell 也能读到（CI、其他工具调用时都能用）。
+常用命令：
 
 ```bash
-echo 'export WEREAD_API_KEY=wrk-你的key' >> ~/.zshenv
-source ~/.zshenv
+weread-to-obsidian "非暴力沟通"        # 导入一本（书名部分匹配或 bookId）
+weread-to-obsidian --all               # 批量导入已读完的书（--include-reading 含在读）
+weread-to-obsidian --sync              # 对账报告（默认 dry-run，--apply 执行）
+weread-to-obsidian --profile           # 更新读者画像
 ```
 
-### 2. 配置 Obsidian Vault 路径
+## 技术方案（简）
 
-默认指向 macOS iCloud 同步的 Obsidian vault：
+Python 3 单文件，只用标准库（`urllib` / `argparse` / `re`），无 requests、无 PyYAML。所有请求走微信读书官方 Agent API Gateway（Bearer 认证）。数据流：拉取有笔记的书单 → 逐本拉划线/想法/热门划线 → 按章节组装 Markdown（YAML frontmatter + 目录 + 深链）→ 写入 vault；frontmatter 字段是 Obsidian Bases / Dataview 视图的稳定契约。76 个单元测试，CI 跑 `unittest`。
 
-```
-~/Library/Mobile Documents/iCloud~md~obsidian/Documents
-```
+## 设计取舍
 
-如果你的 vault 在别处，设置 `WEREAD_VAULT` 环境变量：
+1. 在「synckey 分页」和「count=2000 一次拉全」之间选了后者（`4f2a109`）：实测 synckey 是增量同步游标、不回填历史，308 条想法的书会永远卡在 200 条；代价是每次全量拉取，用流量换正确性。
+2. 在「`--all --force` 全量刷」和「`--sync` 三桶 diff」之间选了 `--sync` 作为日常路径（`842b892`）：全量刷会覆盖手改笔记、浪费 API 调用；代价是要维护 vault 扫描与字段对账逻辑（为此单写了 24 个测试）。
+3. 标准库零依赖：`install.sh` 拷一个文件即完成安装，无 venv 无 pip；代价是 frontmatter 只能用正则手写解析。
 
-```bash
-echo 'export WEREAD_VAULT="$HOME/path/to/your/vault"' >> ~/.zshenv
-```
+## Roadmap
 
-笔记会落到 vault 下的 `读书笔记/` 子目录。要改子目录名设置 `WEREAD_SUBDIR`。
-
-### 3. 验证
-
-```bash
-weread-to-obsidian --list
-```
-
-应能列出所有有笔记的书。
-
-## 用法
-
-```bash
-# 列出你所有有笔记的书
-weread-to-obsidian --list
-
-# 导入某一本（书名部分匹配，或直接传 bookId）
-weread-to-obsidian "非暴力沟通"
-weread-to-obsidian 40747989
-
-# 批量导入"已读完"的书（进度 ≥ 90% 或微信读书标记读完）
-weread-to-obsidian --all
-
-# 把"在读"的也包含
-weread-to-obsidian --all --include-reading
-
-# 已有笔记会跳过，加 --force 覆盖
-weread-to-obsidian "非暴力沟通" --force
-
-# 只显示会发生什么，不写文件
-weread-to-obsidian --all --dry-run
-```
-
-### 生成读者画像
-
-```bash
-# 更新 _读书档案.md 顶部的读者画像（数量 + 品味）
-weread-to-obsidian --profile
-
-# 不写文件，只看会生成什么
-weread-to-obsidian --profile --dry-run
-```
-
-画像包含：
-
-- 📊 **数量画像**：阅读漏斗（读过/读完/阅读天数）· 累计时长 + 笔记数 · 入坑时间和读龄 · 年度阅读趋势 ascii 图 · 单本时长 Top 3 · 勋章统计
-- 🎨 **品味画像**：类别偏好（按时长，含实用书占比洞察）· 微信读书一句话提炼 · 最爱作者 Top 5（按时长）· 24h 阅读时段分布 ascii 图
-
-**保护区机制**：脚本只更新 `_读书档案.md` 文件中 `<!-- WEREAD-PROFILE-START -->` 到 `<!-- WEREAD-PROFILE-END -->` 之间的内容，**不会破坏你手写的索引、快速操作、`.base` 嵌入等其他内容**。
-
-### 同步 vault 与微信读书（drift 检测）
-
-```bash
-# 看 drift 报告（默认 dry-run，只读不写）
-weread-to-obsidian --sync
-
-# 真正执行：拉缺的 + 刷过期的
-weread-to-obsidian --sync --apply
-```
-
-一次轻量 API 调用对比 vault 笔记与微信读书最新数据，输出三类清单：
-
-- 📥 **缺失**：已读完但 vault 没有的书 → `--apply` 自动拉取
-- 🔄 **过期**：vault 在但本地 highlights/thoughts ≠ 微信读书最新数（说明你又新增了划线/想法）→ `--apply` 自动重拉
-- 👻 **孤儿**：vault 在但微信读书 list 没有 → **只警告，不动 vault**（可能是 API key 切换或微信读书删书，需人工处理）
-
-跟 `--all --force` 的区别：`--all --force` 粗暴全刷所有读完书（即使本地数据没变）；`--sync --apply` 精准只动有变化的。日常推荐用 `--sync`，特殊情况（如脚本改了 markdown 结构）用 `--all --force`。
-
-## 推荐工作流
-
-### 每月例行同步
-
-```bash
-weread-to-obsidian --all --force
-```
-
-刷新所有已读完书的最新划线和想法。`--force` 覆盖现有笔记内容（你在原文件里手动加的内容会丢，所以建议在 Obsidian 里只读这份，想自己写跨书思考另起新文件）。
-
-### 用 Obsidian Bases 浏览（原生功能，无需插件）
-
-在 `读书笔记/` 目录下建一个 `读书笔记.base` 文件：
-
-```yaml
-filters:
-  and:
-    - 'type == "读书笔记"'
-    - file.inFolder("读书笔记")
-
-formulas:
-  total_notes: 'highlights + thoughts'
-
-properties:
-  highlights: { displayName: "划线" }
-  thoughts:   { displayName: "想法" }
-  finished:   { displayName: "完成日" }
-
-views:
-  - type: table
-    name: "全部已读完"
-    order: [file.name, author, highlights, thoughts, formula.total_notes, finished]
-  - type: table
-    name: "想法最多"
-    filters: { and: ['thoughts > 30'] }
-    order: [file.name, thoughts, highlights]
-```
-
-然后在任意 markdown 页面用 `![[读书笔记.base#全部已读完]]` 嵌入对应视图。新导入的书会自动出现，不需要手动维护。
-
-> Bases 是 Obsidian 1.9+ 原生功能。如果你的版本不支持，可以装 [Dataview](https://github.com/blacksmithgu/obsidian-dataview) 插件用类似查询达到同样效果。
-
-## 工作机制
-
-- 单本指名（`weread-to-obsidian "书名"`）：不管读没读完都导入——你主动点名了
-- `--all`：只导入"已读完"的书——进度 ≥ 90%，或微信读书标记 `markedStatus == 4`（部分书受版权页等结构影响，读完正文后进度冲不到 90%，需要这条兜底）
-- 文件已存在时**尊重当前位置**——你手动在 vault 里整理过的归类不会被推翻，即使微信读书那边状态变了也不会自动移动文件
+- [ ] 思考画像：对全部想法做语义聚类，生成"我在思考什么"仪表盘
+- [ ] 主题聚合 v2：词典匹配版因信号太弱已移除，计划改用 LLM 语义聚类重做
 
 ## 隐私 & 安全
 
-- 工具只在本地运行，没有任何遥测、不上报使用数据
-- API Key 仅用于鉴权调用 `i.weread.qq.com`
-- 你的笔记内容只在你本机和 Obsidian vault（如果用 iCloud 同步，则同步到你的 iCloud）
-
-## 致谢
-
-- 微信读书提供的 Agent API Gateway
-- [Obsidian](https://obsidian.md) — 知识管理工具
-- [Obsidian Bases](https://help.obsidian.md/bases) — 原生数据库视图（1.9+）
+只在本地运行，无遥测；API key 仅用于鉴权调用 `i.weread.qq.com`；笔记内容只落在你的本机与 vault。
 
 ## License
 
