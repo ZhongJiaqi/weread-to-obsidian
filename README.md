@@ -16,14 +16,15 @@
 
 ## 效果展示
 
+**生成的笔记在 Obsidian 中的样子** —— frontmatter 属性面板 + 笔记规模 + `weread://` 深链回 App：
+
+![Obsidian 渲染效果](docs/screenshots/obsidian-note.png)
+
 单本导入与 `--sync` 对账实跑（2026-07-24）：
 
 ![CLI 实跑](docs/screenshots/cli.png)
 
-<!-- TODO(素材): ① examples/示例笔记.md 在 Obsidian 中的渲染截图（frontmatter + 章节划线/想法 + 热门划线区）
-     ② Obsidian Bases 表格视图截图（可选） -->
-
-生成的笔记结构可先看 [examples/示例笔记.md](examples/示例笔记.md)。
+完整笔记结构可看 [examples/示例笔记.md](examples/示例笔记.md)。
 
 ## 我的书单（真实使用数据）
 
