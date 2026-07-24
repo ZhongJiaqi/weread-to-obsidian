@@ -16,9 +16,12 @@
 
 ## 效果展示
 
+单本导入与 `--sync` 对账实跑（2026-07-24）：
+
+![CLI 实跑](docs/screenshots/cli.png)
+
 <!-- TODO(素材): ① examples/示例笔记.md 在 Obsidian 中的渲染截图（frontmatter + 章节划线/想法 + 热门划线区）
-     ② `--sync` drift 报告终端截图（📥缺失 / 🔄过期 / 👻孤儿 三段）
-     ③ Obsidian Bases 表格视图截图（可选） -->
+     ② Obsidian Bases 表格视图截图（可选） -->
 
 生成的笔记结构可先看 [examples/示例笔记.md](examples/示例笔记.md)。
 
