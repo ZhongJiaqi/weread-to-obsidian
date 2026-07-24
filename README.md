@@ -65,8 +65,9 @@ WEREAD_API_KEY=wrk-你的key weread-to-obsidian --list  # 列出所有有笔记�
 常用命令：
 
 ```bash
-weread-to-obsidian "非暴力沟通"        # 导入一本（书名部分匹配或 bookId）
-weread-to-obsidian --all               # 批量导入已读完的书（--include-reading 含在读）
+weread-to-obsidian "非暴力沟通"        # 导入一本（书名部分匹配或 bookId；已存在默认跳过）
+weread-to-obsidian "非暴力沟通" --dry-run  # 只预览会生成什么，不写文件
+weread-to-obsidian --all --force       # 批量导入并覆盖已存在笔记（--include-reading 含在读）
 weread-to-obsidian --sync              # 对账报告（默认 dry-run，--apply 执行）
 weread-to-obsidian --profile           # 更新读者画像
 ```
