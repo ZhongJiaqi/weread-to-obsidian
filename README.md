@@ -4,7 +4,7 @@
 
 ## 为什么做这个
 
-在微信读书里读了 33 本书、攒下 6500+ 条划线和想法之后，问题越来越明显：写东西想引用某段话，只记得"在某本书里见过"，得打开 App 一本本翻；Obsidian 里的知识库再完整，也检索不到这批数据。笔记的价值在于被反复调用，而不是躺在 App 里睡觉。所以做了这个：走微信读书官方 Agent API 的单文件 Python CLI，一条命令把一本书的全部划线、想法按章节结构落成 Obsidian 可直接检索、可双链引用的 Markdown，并让 vault 与 App 之间保持增量对账。
+在微信读书里读了 33 本书、攒下 6500+ 条划线和想法之后，问题越来越明显：写东西想引用某段话，只记得"在某本书里见过"，得打开 App 一本本翻；Obsidian 里的知识库再完整，也检索不到这批数据。笔记的价值在于被反复调用，而不是躺在 App 里睡觉。所以做了这个：单文件 Python CLI，直连微信读书随官方 weread-skills 技能包开放的 Agent API（key 与 skill 通用），一条命令把一本书的全部划线、想法按章节结构落成 Obsidian 可直接检索、可双链引用的 Markdown，并让 vault 与 App 之间保持增量对账。
 
 ## 核心功能
 
@@ -68,7 +68,7 @@ weread-to-obsidian --profile           # 更新读者画像
 
 ## 技术方案（简）
 
-Python 3 单文件，只用标准库（`urllib` / `argparse` / `re`），无 requests、无 PyYAML。所有请求走微信读书官方 Agent API Gateway（Bearer 认证）。数据流：拉取有笔记的书单 → 逐本拉划线/想法/热门划线 → 按章节组装 Markdown（YAML frontmatter + 目录 + 深链）→ 写入 vault；frontmatter 字段是 Obsidian Bases / Dataview 视图的稳定契约。76 个单元测试，CI 跑 `unittest`。
+Python 3 单文件，只用标准库（`urllib` / `argparse` / `re`），无 requests、无 PyYAML。所有请求直连微信读书官方 Agent API Gateway——即 weread-skills 技能包背后的同一套接口（Bearer 认证，每次请求带 `skill_version`）。数据流：拉取有笔记的书单 → 逐本拉划线/想法/热门划线 → 按章节组装 Markdown（YAML frontmatter + 目录 + 深链）→ 写入 vault；frontmatter 字段是 Obsidian Bases / Dataview 视图的稳定契约。76 个单元测试，CI 跑 `unittest`。
 
 ## 设计取舍
 
